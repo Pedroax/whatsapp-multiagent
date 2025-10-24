@@ -1,0 +1,42 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Select-String:*)",
+      "Bash(if [ -d \"ffmpeg\" ])",
+      "Bash(then rm -rf ffmpeg)",
+      "Bash(fi)",
+      "Bash(if [ -d \"ffmpeg-8.0-essentials_build\" ])",
+      "Bash(then mv \"ffmpeg-8.0-essentials_build\" ffmpeg)",
+      "Bash(dir:*)",
+      "Read(//c/Users/Desktop/OneDrive/Área de Trabalho/alice-multiagente/database/**)",
+      "Bash(npm create:*)",
+      "Bash(npm install)",
+      "Bash(npm install:*)",
+      "Bash(npx tailwindcss init:*)",
+      "Bash(npx tailwindcss:*)",
+      "Bash(cat:*)",
+      "Bash(npm run dev:*)",
+      "Bash(python:*)",
+      "Bash(npm uninstall:*)",
+      "Bash(timeout:*)",
+      "Bash(taskkill:*)",
+      "Bash(netstat:*)",
+      "Bash(findstr:*)",
+      "Bash(pip show:*)",
+      "Bash(curl:*)",
+      "Bash(ngrok:*)",
+      "Read(//c/Users/Desktop/OneDrive/Área de Trabalho/caru2/**)",
+      "Bash(pip install:*)",
+      "Bash(del /S /Q *.pyc)",
+      "Bash(del \"c:\\Users\\Desktop\\OneDrive\\Área de Trabalho\\alice-lc\\frontend-multiagente\\src\\lib\\notifications.ts\")",
+      "Bash(del \"c:\\Users\\Desktop\\OneDrive\\Área de Trabalho\\alice-lc\\frontend-multiagente\\src\\hooks\\useNotifications.ts\")",
+      "Bash(del create_test_user.py)",
+      "Bash(find:*)",
+      "Bash(chmod:*)",
+      "Bash(git init:*)",
+      "Bash(git add:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
