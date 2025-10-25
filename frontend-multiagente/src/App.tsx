@@ -238,8 +238,8 @@ function App() {
                 conversas={conversas.length > 0 ? conversas : mockConversas}
                 mensagens={Object.keys(mensagens).length > 0 ? mensagens : mockMensagens}
                 onLogout={logout}
-                userRole={usuario?.role || 'super_admin'}
-                userDepartamento={usuario?.departamento_slug}
+                userRole={usuario?.role as 'super_admin' | 'vendas' | 'assistencia-tecnica' | 'financeiro' | 'suporte-ti' || 'super_admin'}
+                userDepartamento={usuario?.departamento_slug || undefined}
               />
             )}
           </ProtectedRoute>
