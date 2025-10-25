@@ -40,7 +40,7 @@ class IAController:
         try:
             # Buscar configuração
             response = self.supabase.table("config_ia")\
-                .select("modo_geral, agendamento_ativo")\
+                .select("modo_global, agendamento_ativo")\
                 .eq("empresa_id", empresa_id)\
                 .single()\
                 .execute()
@@ -50,7 +50,7 @@ class IAController:
                 return "atencao"  # modo padrão
 
             config = response.data
-            modo_base = config.get("modo_geral", "atencao")
+            modo_base = config.get("modo_global", "atencao")
 
             # Se agendamento está ativo, verificar se deve sobrescrever
             if config.get("agendamento_ativo"):
@@ -89,7 +89,7 @@ class IAController:
             # Atualizar configuração
             response = self.supabase.table("config_ia")\
                 .update({
-                    "modo_geral": modo,
+                    "modo_global": modo,
                     "updated_at": datetime.utcnow().isoformat(),
                     "updated_by": usuario_id
                 })\

@@ -309,14 +309,14 @@ class IntelligentController:
         """Cria mensagem pendente de aprovação"""
         try:
             # Extrair dados do contexto
-            nome_cliente = contexto.get("nome_cliente", "Cliente")
+            nome_cliente = contexto.get("nome_cliente") or contexto.get("nome_lead") or "Cliente"
             lead_id = f"lead_{phone}"  # TODO: buscar no Supabase
 
             mensagem_criada = await ia_controller.criar_mensagem_pendente(
                 empresa_id=self.empresa_id,
                 conversa_id=f"conv_{phone}",  # TODO: buscar no Supabase
                 lead_id=lead_id,
-                lead_nome=nome_cliente,
+                lead_nome=nome_cliente or "Cliente",
                 lead_telefone=phone,
                 mensagem_recebida=mensagem_usuario,
                 resposta_ia=resposta_ia,
