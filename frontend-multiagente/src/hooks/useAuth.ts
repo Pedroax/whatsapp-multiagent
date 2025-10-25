@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import { API_URL } from '../config'
+import { supabase } from '../lib/supabase'
 
 interface Usuario {
   id: string
@@ -16,7 +16,7 @@ interface AuthState {
   token: string | null
   isAuthenticated: boolean
   login: (email: string, password: string) => Promise<void>
-  logout: () => void
+  logout: () => Promise<void>
   checkAuth: () => Promise<void>
 }
 
@@ -29,24 +29,34 @@ export const useAuth = create<AuthState>()(
 
       login: async (email: string, password: string) => {
         try {
-          const response = await fetch(`${API_URL}/api/auth/login`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ email, password }),
+          // Fazer login no Supabase Auth
+          const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+            email,
+            password,
           })
 
-          if (!response.ok) {
-            const error = await response.json()
-            throw new Error(error.detail || 'Erro ao fazer login')
+          if (authError) {
+            throw new Error(authError.message)
           }
 
-          const data = await response.json()
+          if (!authData.user || !authData.session) {
+            throw new Error('Erro ao fazer login')
+          }
+
+          // Buscar dados do usuário na tabela usuarios
+          const { data: usuarioData, error: usuarioError } = await supabase
+            .from('usuarios')
+            .select('*')
+            .eq('id', authData.user.id)
+            .single()
+
+          if (usuarioError || !usuarioData) {
+            throw new Error('Usuário não encontrado na base de dados')
+          }
 
           set({
-            usuario: data.usuario,
-            token: data.token,
+            usuario: usuarioData,
+            token: authData.session.access_token,
             isAuthenticated: true,
           })
         } catch (error: any) {
@@ -55,17 +65,11 @@ export const useAuth = create<AuthState>()(
         }
       },
 
-      logout: () => {
-        const { token } = get()
-
-        // Chamar endpoint de logout no backend
-        if (token) {
-          fetch('${import.meta.env.VITE_API_URL || "${API_URL}"}/api/auth/logout', {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${token}`,
-            },
-          }).catch(console.error)
+      logout: async () => {
+        try {
+          await supabase.auth.signOut()
+        } catch (error) {
+          console.error('Erro ao fazer logout:', error)
         }
 
         set({
@@ -76,28 +80,29 @@ export const useAuth = create<AuthState>()(
       },
 
       checkAuth: async () => {
-        const { token } = get()
-
-        if (!token) {
-          set({ isAuthenticated: false, usuario: null })
-          return
-        }
-
         try {
-          const response = await fetch('${import.meta.env.VITE_API_URL || "${API_URL}"}/api/auth/me', {
-            headers: {
-              'Authorization': `Bearer ${token}`,
-            },
-          })
+          const { data: { session } } = await supabase.auth.getSession()
 
-          if (!response.ok) {
-            throw new Error('Token inválido')
+          if (!session) {
+            set({ isAuthenticated: false, usuario: null, token: null })
+            return
           }
 
-          const usuario = await response.json()
+          // Buscar dados do usuário na tabela usuarios
+          const { data: usuarioData, error: usuarioError } = await supabase
+            .from('usuarios')
+            .select('*')
+            .eq('id', session.user.id)
+            .single()
+
+          if (usuarioError || !usuarioData) {
+            set({ isAuthenticated: false, usuario: null, token: null })
+            return
+          }
 
           set({
-            usuario,
+            usuario: usuarioData,
+            token: session.access_token,
             isAuthenticated: true,
           })
         } catch (error) {
