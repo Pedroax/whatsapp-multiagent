@@ -32,7 +32,7 @@ export const ApprovalQueue: React.FC<ApprovalQueueProps> = ({ empresaId }) => {
 
   const carregarFila = async () => {
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:8000"}/api/ia-control/fila-aprovacao/${empresaId}`);
+      const response = await fetch(`${import.meta.env.VITE_API_URL || "${API_URL}"}/api/ia-control/fila-aprovacao/${empresaId}`);
       const data = await response.json();
       if (data.success) {
         setMensagens(data.mensagens);
@@ -47,7 +47,7 @@ export const ApprovalQueue: React.FC<ApprovalQueueProps> = ({ empresaId }) => {
   const aprovarMensagem = async (mensagemId: string, textoFinal?: string) => {
     setProcessando(mensagemId);
     try {
-      const response = await fetch('${import.meta.env.VITE_API_URL || "http://localhost:8000"}/api/ia-control/aprovar-mensagem', {
+      const response = await fetch('${import.meta.env.VITE_API_URL || "${API_URL}"}/api/ia-control/aprovar-mensagem', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -77,7 +77,7 @@ export const ApprovalQueue: React.FC<ApprovalQueueProps> = ({ empresaId }) => {
   const recusarMensagem = async (mensagemId: string) => {
     setProcessando(mensagemId);
     try {
-      const response = await fetch('${import.meta.env.VITE_API_URL || "http://localhost:8000"}/api/ia-control/recusar-mensagem', {
+      const response = await fetch('${import.meta.env.VITE_API_URL || "${API_URL}"}/api/ia-control/recusar-mensagem', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

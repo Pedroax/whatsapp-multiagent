@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import { API_URL } from '../config'
 
 interface Usuario {
   id: string
@@ -28,7 +29,7 @@ export const useAuth = create<AuthState>()(
 
       login: async (email: string, password: string) => {
         try {
-          const response = await fetch('${import.meta.env.VITE_API_URL || "http://localhost:8000"}/api/auth/login', {
+          const response = await fetch(`${API_URL}/api/auth/login`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -59,7 +60,7 @@ export const useAuth = create<AuthState>()(
 
         // Chamar endpoint de logout no backend
         if (token) {
-          fetch('${import.meta.env.VITE_API_URL || "http://localhost:8000"}/api/auth/logout', {
+          fetch('${import.meta.env.VITE_API_URL || "${API_URL}"}/api/auth/logout', {
             method: 'POST',
             headers: {
               'Authorization': `Bearer ${token}`,
@@ -83,7 +84,7 @@ export const useAuth = create<AuthState>()(
         }
 
         try {
-          const response = await fetch('${import.meta.env.VITE_API_URL || "http://localhost:8000"}/api/auth/me', {
+          const response = await fetch('${import.meta.env.VITE_API_URL || "${API_URL}"}/api/auth/me', {
             headers: {
               'Authorization': `Bearer ${token}`,
             },

@@ -35,7 +35,7 @@ export function ContactInfo({ conversa, onClose }: ContactInfoProps) {
     try {
       const phone = conversa.lead.telefone.replace(/\D/g, '') // Remove formatação
 
-      const response = await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:8000"}/api/resolver-conversa/${phone}`, {
+      const response = await fetch(`${import.meta.env.VITE_API_URL || "${API_URL}"}/api/resolver-conversa/${phone}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
