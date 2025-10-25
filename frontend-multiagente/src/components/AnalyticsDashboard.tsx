@@ -25,7 +25,7 @@ import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import * as XLSX from 'xlsx'
 
-const API_BASE_URL = '${import.meta.env.VITE_API_URL || "${API_URL}"}'
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://138.68.13.174'
 
 interface MetricCardProps {
   title: string
