@@ -40,7 +40,7 @@ class IAController:
         try:
             # Buscar configuração
             response = self.supabase.table("config_ia")\
-                .select("modo_global, agendamento_ativo")\
+                .select("modo_global")\
                 .eq("empresa_id", empresa_id)\
                 .single()\
                 .execute()
@@ -52,12 +52,12 @@ class IAController:
             config = response.data
             modo_base = config.get("modo_global", "atencao")
 
-            # Se agendamento está ativo, verificar se deve sobrescrever
-            if config.get("agendamento_ativo"):
-                modo_agendado = await self._get_modo_por_agendamento(empresa_id)
-                if modo_agendado:
-                    logger.debug(f"📅 Modo da IA sobrescrito por agendamento: {modo_agendado}")
-                    return modo_agendado
+            # TODO: Implementar verificação de agendamento
+            # if config.get("agendamento_ativo"):
+            #     modo_agendado = await self._get_modo_por_agendamento(empresa_id)
+            #     if modo_agendado:
+            #         logger.debug(f"📅 Modo da IA sobrescrito por agendamento: {modo_agendado}")
+            #         return modo_agendado
 
             return modo_base
 

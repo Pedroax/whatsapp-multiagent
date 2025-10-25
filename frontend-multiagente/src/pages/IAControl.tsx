@@ -5,7 +5,7 @@ import { ScheduleManager } from '../components/ScheduleManager';
 
 const IAControl: React.FC = () => {
   // TODO: Pegar empresa_id do contexto de autenticação
-  const empresaId = 'sua-empresa-uuid';
+  const empresaId = 'emp1';
 
   return (
     <div className="min-h-screen bg-gray-50 p-6">
