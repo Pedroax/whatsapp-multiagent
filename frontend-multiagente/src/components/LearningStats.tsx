@@ -31,7 +31,7 @@ export function LearningStats({ empresaId }: LearningStatsProps) {
 
   const fetchStats = async () => {
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL || "${API_URL}"}/api/learning/estatisticas/${empresaId}`)
+      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://138.68.13.174'}/api/learning/estatisticas/${empresaId}`)
       const data = await response.json()
       if (data.success) {
         setStats(data.estatisticas)

@@ -17,7 +17,7 @@ export const IAModeControl: React.FC<IAModeControlProps> = ({ empresaId }) => {
 
   const carregarModo = async () => {
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL || "${API_URL}"}/api/ia-control/modo/${empresaId}`);
+      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://138.68.13.174'}/api/ia-control/modo/${empresaId}`);
       const data = await response.json();
       if (data.success) {
         setModoAtual(data.modo);
@@ -30,7 +30,7 @@ export const IAModeControl: React.FC<IAModeControlProps> = ({ empresaId }) => {
   const alterarModo = async (novoModo: ModoIA) => {
     setLoading(true);
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL || "${API_URL}"}/api/ia-control/modo/${empresaId}`, {
+      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://138.68.13.174'}/api/ia-control/modo/${empresaId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ modo: novoModo })

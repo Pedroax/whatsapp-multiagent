@@ -30,7 +30,7 @@ export function Simulator({ empresaId }: SimulatorProps) {
 
     setLoading(true)
     try {
-      const response = await fetch('${import.meta.env.VITE_API_URL || "${API_URL}"}/api/learning/simulador/rapido', {
+      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://138.68.13.174'}/api/learning/simulador/rapido`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

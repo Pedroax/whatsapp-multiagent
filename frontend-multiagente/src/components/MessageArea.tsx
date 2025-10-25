@@ -44,7 +44,7 @@ export function MessageArea({ conversa, mensagens, onEnviarMensagem }: MessageAr
     try {
       const phone = conversa.lead.telefone.replace(/\D/g, '') // Remove formatação
 
-      const response = await fetch(`${import.meta.env.VITE_API_URL || "${API_URL}"}/api/resolver-conversa/${phone}`, {
+      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://138.68.13.174'}/api/resolver-conversa/${phone}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'

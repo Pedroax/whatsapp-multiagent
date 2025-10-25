@@ -52,7 +52,7 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({ empresaId }) =
 
   const carregarAgendamentos = async () => {
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL || "${API_URL}"}/api/ia-control/agendamentos/${empresaId}`);
+      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://138.68.13.174'}/api/ia-control/agendamentos/${empresaId}`);
       const data = await response.json();
       if (data.success) {
         setAgendamentos(data.agendamentos);
@@ -67,8 +67,8 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({ empresaId }) =
   const salvarAgendamento = async () => {
     try {
       const url = agendamentoEditando?.id
-        ? `${import.meta.env.VITE_API_URL || "${API_URL}"}/api/ia-control/agendamentos/${agendamentoEditando.id}`
-        : '${import.meta.env.VITE_API_URL || "${API_URL}"}/api/ia-control/agendamentos';
+        ? `${import.meta.env.VITE_API_URL || 'http://138.68.13.174'}/api/ia-control/agendamentos/${agendamentoEditando.id}`
+        : `${import.meta.env.VITE_API_URL || 'http://138.68.13.174'}/api/ia-control/agendamentos`;
 
       const method = agendamentoEditando?.id ? 'PUT' : 'POST';
 
@@ -95,7 +95,7 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({ empresaId }) =
     if (!confirm('Deseja realmente deletar este agendamento?')) return;
 
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL || "${API_URL}"}/api/ia-control/agendamentos/${id}`, {
+      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://138.68.13.174'}/api/ia-control/agendamentos/${id}`, {
         method: 'DELETE'
       });
 
