@@ -90,8 +90,7 @@ class IAController:
             response = self.supabase.table("config_ia")\
                 .update({
                     "modo_global": modo,
-                    "updated_at": datetime.utcnow().isoformat(),
-                    "updated_by": usuario_id
+                    "updated_at": datetime.utcnow().isoformat()
                 })\
                 .eq("empresa_id", empresa_id)\
                 .execute()
