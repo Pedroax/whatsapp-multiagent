@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Check, X, Edit3, Clock, User, MessageSquare, Bot, Send } from 'lucide-react';
+import { useAuth } from '../hooks/useAuth';
 
 interface MensagemPendente {
   id: string;
@@ -18,6 +19,7 @@ interface ApprovalQueueProps {
 }
 
 export const ApprovalQueue: React.FC<ApprovalQueueProps> = ({ empresaId }) => {
+  const { usuario } = useAuth();
   const [mensagens, setMensagens] = useState<MensagemPendente[]>([]);
   const [loading, setLoading] = useState(true);
   const [mensagemEditando, setMensagemEditando] = useState<string | null>(null);
@@ -52,7 +54,7 @@ export const ApprovalQueue: React.FC<ApprovalQueueProps> = ({ empresaId }) => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           mensagem_id: mensagemId,
-          usuario_id: 'usuario-temp', // TODO: pegar do contexto de autenticação
+          usuario_id: usuario?.id || 'a792c80c-b4d7-44bf-af55-6e61088c4e98', // Fallback para super admin
           texto_editado: textoFinal
         })
       });
@@ -82,7 +84,7 @@ export const ApprovalQueue: React.FC<ApprovalQueueProps> = ({ empresaId }) => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           mensagem_id: mensagemId,
-          usuario_id: 'usuario-temp',
+          usuario_id: usuario?.id || 'a792c80c-b4d7-44bf-af55-6e61088c4e98', // Fallback para super admin
           motivo: 'Recusado pelo operador'
         })
       });
