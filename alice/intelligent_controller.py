@@ -296,6 +296,43 @@ class IntelligentController:
 
         return tem_valor and not esta_confirmando
 
+    async def _get_or_create_conversa(self, phone: str, contexto: Dict) -> str:
+        """Busca ou cria conversa no banco de dados"""
+        try:
+            # Buscar conversa existente
+            result = self.supabase.table("conversas")\
+                .select("id")\
+                .eq("phone", phone)\
+                .eq("empresa_id", self.empresa_id)\
+                .execute()
+
+            if result.data and len(result.data) > 0:
+                conversa_id = result.data[0]["id"]
+                logger.debug(f"✅ Conversa encontrada: {conversa_id}")
+                return conversa_id
+
+            # Criar nova conversa
+            nome_cliente = contexto.get("nome_cliente") or contexto.get("nome_lead") or "Cliente"
+
+            nova_conversa = self.supabase.table("conversas").insert({
+                "empresa_id": self.empresa_id,
+                "phone": phone,
+                "nome_lead": nome_cliente,
+                "status": "aberta",
+                "modo_ia": "ligado",
+                "prioridade": "normal",
+                "nao_lidas": 0
+            }).execute()
+
+            conversa_id = nova_conversa.data[0]["id"]
+            logger.success(f"✅ Nova conversa criada: {conversa_id}")
+            return conversa_id
+
+        except Exception as e:
+            logger.error(f"❌ Erro ao buscar/criar conversa: {e}")
+            # Fallback: usar ID temporário
+            return f"conv_{phone}"
+
     async def _criar_mensagem_pendente(
         self,
         phone: str,
@@ -308,13 +345,16 @@ class IntelligentController:
     ) -> str:
         """Cria mensagem pendente de aprovação"""
         try:
+            # Buscar ou criar conversa
+            conversa_id = await self._get_or_create_conversa(phone, contexto)
+
             # Extrair dados do contexto
             nome_cliente = contexto.get("nome_cliente") or contexto.get("nome_lead") or "Cliente"
             lead_id = f"lead_{phone}"  # TODO: buscar no Supabase
 
             mensagem_criada = await ia_controller.criar_mensagem_pendente(
                 empresa_id=self.empresa_id,
-                conversa_id=f"conv_{phone}",  # TODO: buscar no Supabase
+                conversa_id=conversa_id,
                 lead_id=lead_id,
                 lead_nome=nome_cliente or "Cliente",
                 lead_telefone=phone,
