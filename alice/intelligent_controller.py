@@ -176,43 +176,19 @@ class IntelligentController:
             return "aguardar_aprovacao", mensagem_id
 
         # ====================================================================
-        # MODO LIGADO - Decisão inteligente baseada em confiança
+        # MODO LIGADO - Envia automaticamente SEMPRE
         # ====================================================================
         if modo_ia == "ligado":
-            # Verificar config de auto-aprovação
-            config = await ia_controller._get_config_ia(self.empresa_id)
-            auto_aprovar_alta_confianca = config.get("auto_aprovar_alta_confianca", False)
-            limiar_confianca = config.get("limiar_confianca", 0.95)
-
-            # Auto-aprovar se confiança alta E config permite
-            if auto_aprovar_alta_confianca and confianca >= limiar_confianca:
-                logger.success(
-                    f"✨ AUTO-APROVADA (confiança: {confianca:.2%} >= {limiar_confianca:.2%})"
-                )
-
-                # Registrar decisão para aprendizado
-                await self._registrar_decisao_aprendizado(
-                    mensagem_usuario, resposta_ia, intencao, confianca, contexto, "enviar_direto"
-                )
-
-                return "enviar_direto", None
-
-            # Caso contrário, pede aprovação
-            logger.info(
-                f"🟡 Confiança baixa ({confianca:.2%}) - Criando mensagem para aprovação"
-            )
-
-            mensagem_id = await self._criar_mensagem_pendente(
-                phone, mensagem_usuario, resposta_ia,
-                confianca, intencao, metadados, contexto
+            logger.success(
+                f"🟢 MODO LIGADO - Enviando resposta automaticamente (confiança: {confianca:.2%})"
             )
 
             # Registrar decisão para aprendizado
             await self._registrar_decisao_aprendizado(
-                mensagem_usuario, resposta_ia, intencao, confianca, contexto, "aguardar_aprovacao"
+                mensagem_usuario, resposta_ia, intencao, confianca, contexto, "enviar_direto"
             )
 
-            return "aguardar_aprovacao", mensagem_id
+            return "enviar_direto", None
 
         # Fallback: aguardar aprovação
         return "aguardar_aprovacao", None
