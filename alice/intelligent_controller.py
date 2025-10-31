@@ -17,7 +17,11 @@ class IntelligentController:
 
     def __init__(self):
         """Inicializa o controlador inteligente"""
+        from supabase import create_client
+        from config import settings
+
         self.empresa_id = "emp1"  # TODO: Pegar dinamicamente por phone
+        self.supabase = create_client(settings.supabase_url, settings.supabase_service_key)
         logger.info("✅ IntelligentController inicializado")
 
     # ========================================================================
@@ -272,7 +276,7 @@ class IntelligentController:
 
         return tem_valor and not esta_confirmando
 
-    async def _get_or_create_conversa(self, phone: str, contexto: Dict) -> str:
+    async def _get_or_create_conversa(self, phone: str, contexto: Dict, push_name: str = "Cliente") -> str:
         """Busca ou cria conversa no banco de dados"""
         try:
             # Buscar conversa existente
@@ -288,7 +292,7 @@ class IntelligentController:
                 return conversa_id
 
             # Criar nova conversa
-            nome_cliente = contexto.get("nome_cliente") or contexto.get("nome_lead") or "Cliente"
+            nome_cliente = push_name or contexto.get("nome_cliente") or contexto.get("nome_lead") or "Cliente"
 
             nova_conversa = self.supabase.table("conversas").insert({
                 "empresa_id": self.empresa_id,
