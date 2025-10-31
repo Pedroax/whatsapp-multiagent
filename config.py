@@ -7,7 +7,8 @@ class Settings(BaseSettings):
     """Configurações do ambiente"""
 
     # LLM (usando OpenAI GPT-4)
-    openai_api_key: str  # Obrigatório
+    google_api_key: str  # Obrigatório
+    openai_api_key: Optional[str] = None  # Opcional (fallback)
     anthropic_api_key: Optional[str] = None  # Opcional (não usado)
 
     # WhatsApp Evolution API
