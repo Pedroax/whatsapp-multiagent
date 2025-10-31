@@ -14,18 +14,15 @@ class MessageDebouncer:
     processando apenas quando o usuário para de enviar por X segundos.
     """
 
-    def __init__(self, wait_seconds: float = 5.0, max_wait_seconds: float = 40.0):
+    def __init__(self, wait_seconds: float = 5.0):
         """
         Args:
             wait_seconds: Segundos de espera após última mensagem antes de processar
-            max_wait_seconds: Tempo máximo total de espera (força processamento)
         """
         self.wait_seconds = wait_seconds
-        self.max_wait_seconds = max_wait_seconds
         self.timers: Dict[str, asyncio.Task] = {}
         self.message_buffer: Dict[str, list] = {}
         self.locks: Dict[str, asyncio.Lock] = {}
-        self.first_message_time: Dict[str, datetime] = {}  # Rastreia quando primeira mensagem chegou
 
     async def add_message(
         self,
@@ -49,9 +46,6 @@ class MessageDebouncer:
             # Adiciona mensagem ao buffer
             if phone not in self.message_buffer:
                 self.message_buffer[phone] = []
-                # Registra timestamp da primeira mensagem
-                self.first_message_time[phone] = datetime.now()
-                logger.info(f"🕐 Primeira mensagem de {phone} às {self.first_message_time[phone].strftime('%H:%M:%S')}")
 
             self.message_buffer[phone].append({
                 "message": message,
@@ -86,30 +80,9 @@ class MessageDebouncer:
             callback: Função a ser chamada
         """
         try:
-            # Verifica se já passou do tempo máximo
-            first_msg_time = self.first_message_time.get(phone)
-            if first_msg_time:
-                elapsed = (datetime.now() - first_msg_time).total_seconds()
-
-                # Se já passou do tempo máximo, processa imediatamente
-                if elapsed >= self.max_wait_seconds:
-                    logger.warning(
-                        f"⏰ TIMEOUT MÁXIMO atingido para {phone}! "
-                        f"Processando após {elapsed:.1f}s (máx: {self.max_wait_seconds}s)"
-                    )
-                    # Não aguarda, processa imediatamente
-                else:
-                    # Calcula quanto tempo ainda pode esperar
-                    remaining_time = min(self.wait_seconds, self.max_wait_seconds - elapsed)
-                    logger.info(
-                        f"⏳ Aguardando {remaining_time:.1f}s de silêncio para {phone} "
-                        f"(tempo total: {elapsed:.1f}s / {self.max_wait_seconds}s)"
-                    )
-                    await asyncio.sleep(remaining_time)
-            else:
-                # Fallback: aguarda tempo normal
-                logger.info(f"⏳ Aguardando {self.wait_seconds}s de silêncio para {phone}...")
-                await asyncio.sleep(self.wait_seconds)
+            # Aguarda o tempo de debounce
+            logger.info(f"⏳ Aguardando {self.wait_seconds}s de silêncio para {phone}...")
+            await asyncio.sleep(self.wait_seconds)
 
             # Pega todas as mensagens do buffer
             async with self.locks[phone]:
@@ -127,10 +100,8 @@ class MessageDebouncer:
                     f"   '{combined_message[:100]}...'"
                 )
 
-                # Limpa buffer e timestamp
+                # Limpa buffer
                 self.message_buffer[phone] = []
-                if phone in self.first_message_time:
-                    del self.first_message_time[phone]
 
             # Processa mensagem combinada
             await callback(phone, combined_message)
@@ -149,8 +120,6 @@ class MessageDebouncer:
         """Limpa buffer de um usuário"""
         if phone in self.message_buffer:
             del self.message_buffer[phone]
-        if phone in self.first_message_time:
-            del self.first_message_time[phone]
         if phone in self.timers:
             if not self.timers[phone].done():
                 self.timers[phone].cancel()
@@ -159,4 +128,4 @@ class MessageDebouncer:
 
 
 # Singleton global
-message_debouncer = MessageDebouncer(wait_seconds=5.0, max_wait_seconds=40.0)
+message_debouncer = MessageDebouncer(wait_seconds=5.0)

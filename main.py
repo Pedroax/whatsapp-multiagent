@@ -1,14 +1,11 @@
 """Aplicação principal da Alice"""
 import asyncio
 from typing import Optional
-from fastapi import FastAPI, Request, HTTPException, Depends, UploadFile, File, Form
-from fastapi.responses import JSONResponse, HTMLResponse
+from fastapi import FastAPI, Request, HTTPException, Depends
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
 import sys
-import os
-import uuid
-from pathlib import Path
 
 from config import settings
 from alice.agent import AliceAgent
@@ -19,7 +16,6 @@ from whatsapp.evolution_api import EvolutionAPI
 from utils.debouncer import MessageDebouncer
 from utils.message_splitter import send_with_typing_simulation
 from utils.media_processor import MediaProcessor
-from monitoring import health_monitor, require_auth, get_client_ip, add_ip_to_whitelist
 
 
 # ============================================================================
@@ -87,8 +83,8 @@ async def startup():
     # WhatsApp API
     whatsapp_api = EvolutionAPI()
 
-    # Debouncer (5s de silêncio, máximo 40s total)
-    debouncer = MessageDebouncer(wait_seconds=settings.debounce_seconds, max_wait_seconds=40.0)
+    # Debouncer
+    debouncer = MessageDebouncer(wait_seconds=settings.debounce_seconds)
 
     # Processador de mídia
     media_processor = MediaProcessor()
@@ -147,10 +143,9 @@ async def whatsapp_webhook(request: Request):
         if key.get("fromMe"):
             return JSONResponse({"status": "ignored", "reason": "message from me"})
 
-        # Extrai telefone e nome do contato
+        # Extrai telefone
         remote_jid = key.get("remoteJid", "")
         phone = remote_jid.split("@")[0]  # Remove @s.whatsapp.net
-        push_name = data.get("pushName", "Cliente")  # Nome do WhatsApp
 
         # ========================================================================
         # PROCESSA MÍDIAS (ÁUDIO, IMAGEM, DOCUMENTO)
@@ -280,7 +275,7 @@ async def whatsapp_webhook(request: Request):
         await debouncer.add_message(
             phone=phone,
             message=message_text,
-            callback=lambda p, m: process_message(p, m, push_name)
+            callback=process_message
         )
 
         return JSONResponse({"status": "queued"})
@@ -290,47 +285,16 @@ async def whatsapp_webhook(request: Request):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-async def salvar_mensagem(conversa_id: str, remetente: str, conteudo: str, tipo_midia: str = "text"):
-    """
-    Salva mensagem no histórico
-
-    Args:
-        conversa_id: ID da conversa
-        remetente: 'usuario' ou 'assistente'
-        conteudo: Conteúdo da mensagem
-        tipo_midia: Tipo de mídia (text, audio, image, document)
-    """
-    try:
-        from supabase import create_client
-        from config import settings
-
-        supabase = create_client(settings.supabase_url, settings.supabase_service_key)
-
-        supabase.table("mensagens").insert({
-            "conversa_id": conversa_id,
-            "remetente": remetente,
-            "conteudo": conteudo,
-            "tipo_midia": tipo_midia
-        }).execute()
-
-        logger.debug(f"💬 Mensagem salva: {remetente} - {conteudo[:50]}...")
-
-    except Exception as e:
-        logger.error(f"❌ Erro ao salvar mensagem: {e}")
-
-
 async def notificar_departamento_transferencia(
     phone: str,
     departamento: str,
     nome_cliente: str,
-    ultima_mensagem: str,
-    motivo: str = "Transferência solicitada pela IA"
+    ultima_mensagem: str
 ):
     """
     Notifica departamento específico sobre transferência de conversa
 
     Cria registro no Supabase para frontend exibir com badge e som
-    Mantém compatibilidade total com transferência manual via botão
     """
     try:
         from supabase import create_client
@@ -339,19 +303,7 @@ async def notificar_departamento_transferencia(
 
         supabase = create_client(settings.supabase_url, settings.supabase_service_key)
 
-        # Primeiro buscar conversa existente para preservar nome_lead
-        existing = supabase.table("conversas").select("nome_lead").eq("phone", phone).execute()
-        nome_final = nome_cliente
-
-        if existing.data and len(existing.data) > 0:
-            # Se conversa existe e já tem nome, usar o nome existente
-            nome_existente = existing.data[0].get("nome_lead")
-            if nome_existente:
-                nome_final = nome_existente
-                logger.debug(f"📝 Preservando nome existente: {nome_existente}")
-
         # Criar ou atualizar conversa com departamento
-        # MESMOS CAMPOS que o botão de transferência manual usa
         result = supabase.table("conversas").upsert({
             "phone": phone,
             "empresa_id": "emp1",
@@ -361,34 +313,27 @@ async def notificar_departamento_transferencia(
             "ultima_mensagem": ultima_mensagem,
             "ultima_mensagem_em": datetime.utcnow().isoformat(),
             "transferido_em": datetime.utcnow().isoformat(),
-            "transferido_por": "alice-ia",  # Identificador da IA
-            "motivo_transferencia": motivo,  # Motivo da transferência
-            "nome_lead": nome_final,
-            "notificado": False,  # Frontend vai marcar como True quando usuário ver
-            "updated_at": datetime.utcnow().isoformat()
+            "nome_lead": nome_cliente,
+            "notificado": False  # Frontend vai marcar como True quando usuário ver
         }, on_conflict="phone").execute()
 
-        logger.success(f"✅ Conversa transferida pela IA para {departamento}: {motivo}")
+        logger.success(f"✅ Conversa criada/atualizada para {departamento}")
 
     except Exception as e:
         logger.error(f"❌ Erro ao notificar departamento: {e}")
 
 
-async def process_message(phone: str, combined_message: str, push_name: str = "Cliente"):
+async def process_message(phone: str, combined_message: str):
     """
     Processa mensagem(ns) agrupada(s) do usuário com CONTROLE INTELIGENTE DA IA
 
     Args:
         phone: Telefone do usuário
         combined_message: Mensagem(ns) combinada(s)
-        push_name: Nome do contato no WhatsApp
     """
     logger.info(f"🤖 Processando mensagem de {phone}")
 
     try:
-        # Mostra "digitando..." no WhatsApp (3 pontinhos)
-        asyncio.create_task(whatsapp_api.send_typing(phone, duration=5000))
-
         # Importar controlador inteligente
         from alice.intelligent_controller import intelligent_controller
 
@@ -417,17 +362,6 @@ async def process_message(phone: str, combined_message: str, push_name: str = "C
 
         logger.info(f"🎯 Decisão: {decisao}")
 
-        # ====================================================================
-        # 💾 CRIAR/ATUALIZAR CONVERSA NO BANCO
-        # ====================================================================
-        conversa_id = await intelligent_controller._get_or_create_conversa(phone, new_state, push_name)
-        logger.debug(f"💾 Conversa ID: {conversa_id}")
-
-        # ====================================================================
-        # 💬 SALVAR MENSAGEM DO USUÁRIO NO HISTÓRICO
-        # ====================================================================
-        await salvar_mensagem(conversa_id, "usuario", combined_message)
-
         # CASO 1: Enviar direto (modo ligado + alta confiança)
         if decisao == "enviar_direto":
             await send_with_typing_simulation(
@@ -437,9 +371,6 @@ async def process_message(phone: str, combined_message: str, push_name: str = "C
                 use_smart_split=True
             )
             logger.success(f"✅ Mensagem enviada DIRETAMENTE (alta confiança)")
-
-            # Salvar resposta da IA no histórico
-            await salvar_mensagem(conversa_id, "assistente", response)
 
         # CASO 2: Aguardar aprovação (modo atenção OU baixa confiança)
         elif decisao == "aguardar_aprovacao":
@@ -456,38 +387,20 @@ async def process_message(phone: str, combined_message: str, push_name: str = "C
         # ====================================================================
         # 🔔 VERIFICAR SE HOUVE TRANSFERÊNCIA PARA DEPARTAMENTO
         # ====================================================================
-        logger.debug(f"🔍 Verificando transferência - State keys: {list(new_state.keys())}")
-        logger.debug(f"🔍 notificar_departamento = {new_state.get('notificar_departamento')}")
-
         if new_state.get("notificar_departamento"):
             departamento = new_state.get("notificar_departamento")
-            motivo = new_state.get("motivo_transferencia", "Cliente solicitou atendimento humano")
-            logger.warning(f"🔔 CHAMANDO notificar_departamento_transferencia para {departamento}")
-
-            # Usar push_name se nome_cliente não estiver no state
-            nome_para_salvar = new_state.get("nome_cliente") or push_name or "Cliente"
-
             await notificar_departamento_transferencia(
                 phone=phone,
                 departamento=departamento,
-                nome_cliente=nome_para_salvar,
-                ultima_mensagem=combined_message,
-                motivo=motivo
+                nome_cliente=new_state.get("nome_cliente", "Cliente"),
+                ultima_mensagem=combined_message
             )
-            logger.success(f"🔔 Conversa transferida pela IA para {departamento}: {motivo}")
+            logger.success(f"🔔 Notificação enviada para {departamento}")
 
         logger.success(f"✅ Mensagem processada ({decisao})")
 
-        # Reseta contador de erros do modelo (está funcionando)
-        model_name = "gemini" if "gemini" in str(type(alice_agent)).lower() else "gpt-4o"
-        health_monitor.reset_model_errors(model_name)
-
     except Exception as e:
         logger.error(f"💥 Erro ao processar mensagem de {phone}: {str(e)}")
-
-        # Incrementa contador de erros do modelo
-        model_name = "gemini" if "gemini" in str(type(alice_agent)).lower() else "gpt-4o"
-        health_monitor.increment_model_error(model_name)
 
         # Envia mensagem de erro
         await whatsapp_api.send_text(
@@ -499,78 +412,6 @@ async def process_message(phone: str, combined_message: str, push_name: str = "C
 # ============================================================================
 # ENDPOINTS DE CONTROLE
 # ============================================================================
-
-@app.get("/api/conversas")
-async def buscar_conversas():
-    """
-    Busca todas as conversas com suas mensagens
-
-    Returns:
-        Lista de conversas com mensagens incluídas
-    """
-    try:
-        from supabase import create_client
-        from config import settings
-
-        supabase = create_client(settings.supabase_url, settings.supabase_service_key)
-
-        # Buscar conversas
-        conversas_result = supabase.table("conversas")\
-            .select("*")\
-            .order("updated_at", desc=True)\
-            .execute()
-
-        conversas_com_mensagens = []
-
-        for conversa in conversas_result.data:
-            # Buscar mensagens desta conversa
-            mensagens_result = supabase.table("mensagens")\
-                .select("*")\
-                .eq("conversa_id", conversa["id"])\
-                .order("enviada_em", desc=False)\
-                .execute()
-
-            conversas_com_mensagens.append({
-                **conversa,
-                "mensagens": mensagens_result.data
-            })
-
-        return {"conversas": conversas_com_mensagens}
-
-    except Exception as e:
-        logger.error(f"❌ Erro ao buscar conversas: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/api/mensagens/{conversa_id}")
-async def buscar_mensagens(conversa_id: str):
-    """
-    Busca todas as mensagens de uma conversa
-
-    Args:
-        conversa_id: ID da conversa
-
-    Returns:
-        Lista de mensagens ordenadas por data
-    """
-    try:
-        from supabase import create_client
-        from config import settings
-
-        supabase = create_client(settings.supabase_url, settings.supabase_service_key)
-
-        result = supabase.table("mensagens")\
-            .select("*")\
-            .eq("conversa_id", conversa_id)\
-            .order("enviada_em", desc=False)\
-            .execute()
-
-        return {"mensagens": result.data}
-
-    except Exception as e:
-        logger.error(f"❌ Erro ao buscar mensagens: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
 
 @app.get("/health")
 async def health_check():
@@ -602,8 +443,7 @@ async def instance_status():
 # ENDPOINTS DE AUTENTICAÇÃO
 # ============================================================================
 
-from alice.auth import auth_service, require_super_admin
-from alice.auth import require_auth as user_require_auth  # Auth de usuários (não confundir com monitor)
+from alice.auth import auth_service, require_auth, require_super_admin
 
 @app.post("/api/auth/login")
 async def login(request: Request):
@@ -641,7 +481,7 @@ async def login(request: Request):
 
 
 @app.post("/api/auth/logout")
-async def logout(request: Request, usuario = Depends(user_require_auth)):
+async def logout(request: Request, usuario = Depends(require_auth)):
     """Logout (remove sessão)"""
     try:
         authorization = request.headers.get("authorization", "")
@@ -654,79 +494,9 @@ async def logout(request: Request, usuario = Depends(user_require_auth)):
 
 
 @app.get("/api/auth/me")
-async def get_me(usuario = Depends(user_require_auth)):
+async def get_me(usuario = Depends(require_auth)):
     """Retorna dados do usuário logado"""
     return usuario
-
-
-@app.post("/api/upload")
-async def upload_file(file: UploadFile = File(...), phone: str = Form(...)):
-    """
-    Endpoint para fazer upload de arquivos (imagens, áudios, vídeos, documentos)
-
-    Retorna a URL do arquivo para ser usado no envio da mensagem
-    """
-    try:
-        # Criar diretório de uploads se não existir
-        upload_dir = Path("/var/www/alice-lc-uploads")
-        upload_dir.mkdir(parents=True, exist_ok=True)
-
-        # Gerar nome único para o arquivo
-        file_extension = Path(file.filename or "file").suffix
-        unique_filename = f"{phone}_{uuid.uuid4()}{file_extension}"
-        file_path = upload_dir / unique_filename
-
-        # Salvar arquivo
-        with open(file_path, "wb") as buffer:
-            content = await file.read()
-            buffer.write(content)
-
-        # Ajustar permissões para nginx poder ler
-        os.chmod(file_path, 0o644)
-
-        # Retornar URL (ajustar conforme seu servidor)
-        file_url = f"http://138.68.13.174/uploads/{unique_filename}"
-
-        logger.success(f"✅ Arquivo enviado: {file_url}")
-
-        return {
-            "success": True,
-            "url": file_url,
-            "filename": unique_filename
-        }
-
-    except Exception as e:
-        logger.error(f"❌ Erro ao fazer upload: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-def formatar_mensagem_com_departamento(message: str, departamento: str) -> str:
-    """
-    Formata mensagem com prefixo do departamento em negrito
-
-    Args:
-        message: Mensagem original
-        departamento: Slug do departamento (vendas, financeiro, etc)
-
-    Returns:
-        Mensagem formatada com prefixo em negrito
-    """
-    # Mapeamento de departamentos para nomes formatados
-    nomes_departamentos = {
-        "vendas": "Vendas",
-        "financeiro": "Financeiro",
-        "assistencia-tecnica": "Assistência Técnica",
-        "suporte-ti": "Suporte TI",
-        "geral": "Humano"  # Super admin
-    }
-
-    # Pegar nome do departamento (fallback para "Humano" se não encontrado)
-    nome_dept = nomes_departamentos.get(departamento, "Humano")
-
-    # Formatar com negrito usando *texto* (formato WhatsApp)
-    mensagem_formatada = f"*{nome_dept}:*\n{message}"
-
-    return mensagem_formatada
 
 
 @app.post("/api/enviar-mensagem")
@@ -739,8 +509,7 @@ async def enviar_mensagem(request: Request):
         "phone": "5561999999999",
         "message": "Olá, sou do financeiro...",
         "departamento": "financeiro",
-        "user_id": "user123",
-        "midia_url": "http://exemplo.com/imagem.jpg"  // opcional
+        "user_id": "user123"
     }
     """
     try:
@@ -753,40 +522,12 @@ async def enviar_mensagem(request: Request):
         message = payload.get("message")
         departamento = payload.get("departamento")
         user_id = payload.get("user_id")
-        midia_url = payload.get("midia_url")
-
-        # DEBUG: Log do payload recebido
-        logger.warning(f"🔍 PAYLOAD RECEBIDO: {payload}")
-        logger.warning(f"📋 Departamento recebido: '{departamento}' (tipo: {type(departamento)})")
 
         if not phone or not message:
             raise HTTPException(status_code=400, detail="Phone and message are required")
 
-        # Formatar mensagem com prefixo do departamento
-        mensagem_formatada = formatar_mensagem_com_departamento(message, departamento)
-        logger.warning(f"💬 Mensagem formatada: {mensagem_formatada[:100]}")
-
-        # Enviar via WhatsApp (com mídia se houver)
-        if midia_url:
-            # Extrair nome do arquivo da URL
-            from pathlib import Path
-            filename = Path(midia_url).name
-
-            # Detectar tipo de mídia
-            if any(ext in midia_url.lower() for ext in ['.jpg', '.jpeg', '.png', '.gif', '.webp']):
-                await whatsapp_api.send_image(phone, midia_url, mensagem_formatada)
-            elif any(ext in midia_url.lower() for ext in ['.mp4', '.avi', '.mov']):
-                await whatsapp_api.send_video(phone, midia_url, mensagem_formatada)
-            elif any(ext in midia_url.lower() for ext in ['.mp3', '.ogg', '.wav', '.m4a']):
-                # Áudio não suporta caption, envia texto separado
-                await whatsapp_api.send_audio(phone, midia_url)
-                await whatsapp_api.send_text(phone, mensagem_formatada)
-            elif any(ext in midia_url.lower() for ext in ['.pdf', '.doc', '.docx', '.xls', '.xlsx']):
-                await whatsapp_api.send_document(phone, midia_url, mensagem_formatada, filename)
-            else:
-                await whatsapp_api.send_text(phone, f"{mensagem_formatada}\n\nArquivo: {midia_url}")
-        else:
-            await whatsapp_api.send_text(phone, mensagem_formatada)
+        # Enviar via WhatsApp
+        await whatsapp_api.send_text(phone, message)
 
         # Salvar mensagem no Supabase
         supabase = create_client(settings.supabase_url, settings.supabase_service_key)
@@ -801,132 +542,25 @@ async def enviar_mensagem(request: Request):
         if conversa_result.data:
             conversa_id = conversa_result.data["id"]
 
-            # Detectar tipo de mídia
-            tipo_midia = "texto"
-            if midia_url:
-                if any(ext in midia_url.lower() for ext in ['.jpg', '.jpeg', '.png', '.gif', '.webp']):
-                    tipo_midia = "imagem"
-                elif any(ext in midia_url.lower() for ext in ['.mp4', '.avi', '.mov']):
-                    tipo_midia = "video"
-                elif any(ext in midia_url.lower() for ext in ['.mp3', '.ogg', '.wav', '.m4a']):
-                    tipo_midia = "audio"
-                elif any(ext in midia_url.lower() for ext in ['.pdf', '.doc', '.docx', '.xls', '.xlsx']):
-                    tipo_midia = "documento"
-
-            # Criar mensagem (salvar com prefixo formatado)
+            # Criar mensagem
             supabase.table("mensagens").insert({
                 "conversa_id": conversa_id,
-                "remetente": "assistente",
-                "conteudo": mensagem_formatada,  # Mensagem COM prefixo do departamento
-                "tipo_midia": tipo_midia if midia_url else "text",
+                "phone": phone,
+                "tipo": "saida",
+                "conteudo": message,
+                "enviado_por_ia": False,
+                "enviado_por_user_id": user_id,
+                "departamento_origem": departamento,
                 "lida": True,
-                "enviada_em": datetime.utcnow().isoformat()
+                "created_at": datetime.utcnow().isoformat()
             }).execute()
 
-        logger.success(f"✅ Mensagem enviada para {phone} (tipo: {tipo_midia})")
+        logger.success(f"✅ Mensagem enviada de {departamento} para {phone}")
 
         return {"success": True, "message": "Mensagem enviada com sucesso"}
 
     except Exception as e:
         logger.error(f"❌ Erro ao enviar mensagem: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.post("/api/pausar-ia/{phone}")
-async def pausar_ia(phone: str, request: Request):
-    """
-    Pausa a IA para uma conversa específica (quando humano assume)
-
-    Body:
-    {
-        "user_id": "user123"
-    }
-    """
-    try:
-        from supabase import create_client
-        from config import settings
-        from datetime import datetime
-
-        payload = await request.json()
-        user_id = payload.get("user_id", "sistema")
-
-        supabase = create_client(settings.supabase_url, settings.supabase_service_key)
-
-        # Pausar IA
-        result = supabase.table("conversas").update({
-            "modo_ia": "desligado",  # PAUSAR IA
-            "status": "aberta",
-            "transferido_em": datetime.utcnow().isoformat(),
-            "transferido_por": user_id,
-            "motivo_transferencia": "Humano assumiu conversa via dashboard",
-            "updated_at": datetime.utcnow().isoformat()
-        }).eq("phone", phone).execute()
-
-        logger.success(f"✅ IA pausada para conversa {phone}")
-
-        return {
-            "success": True,
-            "message": "IA pausada com sucesso",
-            "phone": phone
-        }
-
-    except Exception as e:
-        logger.error(f"❌ Erro ao pausar IA: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.post("/api/transferir-conversa")
-async def transferir_conversa(request: Request):
-    """
-    Transfere conversa para um departamento e pausa a IA
-
-    Body:
-    {
-        "phone": "5561999999999",
-        "departamento": "financeiro",
-        "motivo": "Cliente solicita falar com financeiro",
-        "user_id": "user123"
-    }
-    """
-    try:
-        from supabase import create_client
-        from config import settings
-        from datetime import datetime
-
-        payload = await request.json()
-        phone = payload.get("phone")
-        departamento = payload.get("departamento")
-        motivo = payload.get("motivo", "")
-        user_id = payload.get("user_id", "sistema")
-
-        if not phone or not departamento:
-            raise HTTPException(status_code=400, detail="Phone and departamento are required")
-
-        supabase = create_client(settings.supabase_url, settings.supabase_service_key)
-
-        # Atualizar conversa: pausar IA e atribuir departamento
-        result = supabase.table("conversas").update({
-            "modo_ia": "desligado",  # PAUSAR IA
-            "departamento_slug": departamento,
-            "status": "aberta",
-            "transferido_em": datetime.utcnow().isoformat(),
-            "transferido_por": user_id,
-            "motivo_transferencia": motivo,
-            "notificado": False,
-            "updated_at": datetime.utcnow().isoformat()
-        }).eq("phone", phone).execute()
-
-        logger.success(f"✅ Conversa {phone} transferida para {departamento}")
-
-        return {
-            "success": True,
-            "message": f"Conversa transferida para {departamento}",
-            "phone": phone,
-            "departamento": departamento
-        }
-
-    except Exception as e:
-        logger.error(f"❌ Erro ao transferir conversa: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -953,14 +587,13 @@ async def resolver_conversa(phone: str, request: Request):
         supabase = create_client(settings.supabase_url, settings.supabase_service_key)
 
         # Atualizar conversa: reativar IA e marcar como resolvida
-        # LIMPAR departamento_slug para voltar para página central (super admin)
         result = supabase.table("conversas").update({
             "modo_ia": "ligado",  # REATIVAR IA
             "status": "resolvida",
             "resolvido_em": datetime.utcnow().isoformat(),
             "resolvido_por": user_id,
             "nota_resolucao": nota,
-            "departamento_slug": None,  # Volta para super admin
+            "departamento_slug": None,  # Limpar departamento
             "notificado": False,
             "updated_at": datetime.utcnow().isoformat()
         }).eq("phone", phone).execute()
@@ -1100,113 +733,6 @@ async def remove_lead_pending(phone: str):
 # ============================================================================
 # EXECUÇÃO
 # ============================================================================
-
-# ============================================================================
-# WEBHOOK GEMINI (EXPERIMENTAL)
-# ============================================================================
-
-gemini_agent: Optional["GeminiAgent"] = None
-
-@app.post("/webhook/whatsapp-gemini")
-async def whatsapp_webhook_gemini(request: Request):
-    """
-    Webhook alternativo usando Gemini (experimental)
-    Para testar, troque a URL do webhook na Evolution para:
-    https://lcbaterias.automatexia.com.br/webhook/whatsapp-gemini
-    """
-    global gemini_agent
-
-    # Inicializa Gemini sob demanda
-    if gemini_agent is None:
-        from alice.gemini_agent import GeminiAgent
-        gemini_agent = GeminiAgent()
-        logger.info("🔷 Gemini Agent inicializado")
-
-    # Usa a mesma lógica do webhook principal, mas com gemini_agent
-    # Por simplicidade, apenas redireciona para o processo principal
-    # substituindo temporariamente o agent global
-    global alice_agent
-    original_agent = alice_agent
-    alice_agent = gemini_agent
-
-    try:
-        result = await whatsapp_webhook(request)
-        return result
-    finally:
-        alice_agent = original_agent
-
-
-# ============================================================================
-# ROTAS DE MONITORAMENTO
-# ============================================================================
-
-@app.get("/health")
-async def health_check():
-    """Endpoint básico de health check"""
-    return {"status": "healthy", "service": "alice-lc-backend"}
-
-
-@app.get("/monitor", response_class=HTMLResponse)
-async def monitor_login_page():
-    """
-    Página de login do monitor
-    """
-    login_path = Path(__file__).parent / "monitoring" / "login.html"
-    with open(login_path, "r", encoding="utf-8") as f:
-        html_content = f.read()
-
-    return HTMLResponse(content=html_content)
-
-
-@app.get("/monitor/dashboard", response_class=HTMLResponse)
-async def monitor_dashboard(request: Request):
-    """
-    Dashboard de monitoramento do sistema
-    Requer autenticação (IP Whitelist OU Login)
-    """
-    # AUTENTICAÇÃO INLINE (não usa Depends)
-    logger.info("🔍 DEBUG - monitor_dashboard chamado")
-    await require_auth(request)
-
-    # Log de acesso
-    client_ip = get_client_ip(request)
-    logger.info(f"📊 Dashboard acessado por: {client_ip}")
-
-    # Carrega HTML do dashboard
-    dashboard_path = Path(__file__).parent / "monitoring" / "dashboard.html"
-    with open(dashboard_path, "r", encoding="utf-8") as f:
-        html_content = f.read()
-
-    return HTMLResponse(content=html_content)
-
-
-@app.get("/monitor/api/health", dependencies=[Depends(require_auth)])
-async def monitor_api_health():
-    """
-    API que retorna dados de saúde do sistema em JSON
-    Usado pelo dashboard para atualização em tempo real
-    """
-    health_status = await health_monitor.check_system_health()
-    return health_status
-
-
-@app.post("/monitor/whitelist/add")
-async def add_my_ip_to_whitelist(request: Request):
-    """
-    Endpoint especial para adicionar seu próprio IP à whitelist
-    Usar apenas uma vez na primeira configuração
-    """
-    client_ip = get_client_ip(request)
-
-    # Adiciona IP
-    add_ip_to_whitelist(client_ip)
-
-    return {
-        "status": "success",
-        "message": f"IP {client_ip} adicionado à whitelist",
-        "next_step": "Agora você pode acessar /monitor diretamente sem login"
-    }
-
 
 if __name__ == "__main__":
     import uvicorn
