@@ -28,7 +28,9 @@ class AliceAgent:
             model=model_name,
             api_key=settings.openai_api_key,
             temperature=0.1,
-            max_tokens=4096
+            max_tokens=4096,
+            timeout=120.0,  # Timeout de 120 segundos (2 minutos)
+            max_retries=2   # Tenta 2x antes de falhar
         )
 
         # LLM com tools
