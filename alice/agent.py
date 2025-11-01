@@ -83,8 +83,20 @@ class AliceAgent:
         if context_info:
             messages.append(SystemMessage(content=f"CONTEXTO ATUAL:\n{context_info}"))
 
-        # Adiciona histórico de mensagens (apenas últimas 10 para evitar erros de tool_call_id)
-        recent_messages = state["messages"][-10:] if len(state["messages"]) > 10 else state["messages"]
+        # Adiciona histórico de mensagens (filtra ToolMessages com tool_call_id vazio/inválido)
+        from langchain_core.messages import ToolMessage
+
+        filtered_messages = []
+        for msg in state["messages"]:
+            # Se é ToolMessage com tool_call_id vazio/inválido, pula
+            if isinstance(msg, ToolMessage):
+                if not hasattr(msg, 'tool_call_id') or not msg.tool_call_id:
+                    logger.warning(f"⚠️ Pulando ToolMessage com tool_call_id vazio")
+                    continue
+            filtered_messages.append(msg)
+
+        # Limita às últimas 10 mensagens
+        recent_messages = filtered_messages[-10:] if len(filtered_messages) > 10 else filtered_messages
         messages.extend(recent_messages)
 
         # Chama LLM
