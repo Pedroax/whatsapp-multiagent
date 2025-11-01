@@ -91,7 +91,7 @@ class SessionManager:
                     "state": state_json,
                     "expires_at": expires_at,
                     "last_message_at": datetime.now().isoformat()
-                }).execute()
+                }, on_conflict="phone").execute()
 
                 logger.debug(f"💾 Sessão salva no Supabase: {phone}")
 
