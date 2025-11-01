@@ -163,9 +163,10 @@ async def whatsapp_webhook(request: Request):
         if key.get("fromMe"):
             return JSONResponse({"status": "ignored", "reason": "message from me"})
 
-        # Extrai telefone
+        # Extrai telefone e nome do contato
         remote_jid = key.get("remoteJid", "")
         phone = remote_jid.split("@")[0]  # Remove @s.whatsapp.net
+        push_name = data.get("pushName", "Cliente")  # Nome do WhatsApp
 
         # ========================================================================
         # PROCESSA MÍDIAS (ÁUDIO, IMAGEM, DOCUMENTO)
@@ -295,7 +296,7 @@ async def whatsapp_webhook(request: Request):
         await debouncer.add_message(
             phone=phone,
             message=message_text,
-            callback=process_message
+            callback=lambda p, m: process_message(p, m, push_name)
         )
 
         return JSONResponse({"status": "queued"})
@@ -343,13 +344,14 @@ async def notificar_departamento_transferencia(
         logger.error(f"❌ Erro ao notificar departamento: {e}")
 
 
-async def process_message(phone: str, combined_message: str):
+async def process_message(phone: str, combined_message: str, push_name: str = "Cliente"):
     """
     Processa mensagem(ns) agrupada(s) do usuário com CONTROLE INTELIGENTE DA IA
 
     Args:
         phone: Telefone do usuário
         combined_message: Mensagem(ns) combinada(s)
+        push_name: Nome do contato no WhatsApp
     """
     logger.info(f"🤖 Processando mensagem de {phone}")
 
@@ -371,7 +373,7 @@ async def process_message(phone: str, combined_message: str):
         await session_manager.save_session(phone, new_state)
 
         # Cria ou recupera conversa no banco de dados
-        conversa_id = await intelligent_controller._get_or_create_conversa(phone, new_state, push_name="Cliente")
+        conversa_id = await intelligent_controller._get_or_create_conversa(phone, new_state, push_name)
         logger.debug(f"💾 Conversa ID: {conversa_id}")
 
         # ====================================================================
