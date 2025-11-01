@@ -540,6 +540,35 @@ async def get_me(usuario = Depends(require_auth)):
     return usuario
 
 
+def formatar_mensagem_com_departamento(message: str, departamento: str) -> str:
+    """
+    Formata mensagem com prefixo do departamento em negrito
+
+    Args:
+        message: Mensagem original
+        departamento: Slug do departamento (vendas, financeiro, etc)
+
+    Returns:
+        Mensagem formatada com prefixo em negrito
+    """
+    # Mapeamento de departamentos para nomes formatados
+    nomes_departamentos = {
+        "vendas": "Vendas",
+        "financeiro": "Financeiro",
+        "assistencia-tecnica": "Assistência Técnica",
+        "suporte-ti": "Suporte TI",
+        "geral": "Humano"  # Super admin
+    }
+
+    # Pegar nome do departamento (fallback para "Humano" se não encontrado)
+    nome_dept = nomes_departamentos.get(departamento, "Humano")
+
+    # Formatar com negrito usando *texto* (formato WhatsApp)
+    mensagem_formatada = f"*{nome_dept}:*\n{message}"
+
+    return mensagem_formatada
+
+
 @app.post("/api/enviar-mensagem")
 async def enviar_mensagem(request: Request):
     """
@@ -567,8 +596,12 @@ async def enviar_mensagem(request: Request):
         if not phone or not message:
             raise HTTPException(status_code=400, detail="Phone and message are required")
 
+        # Formatar mensagem com prefixo do departamento
+        mensagem_formatada = formatar_mensagem_com_departamento(message, departamento)
+        logger.info(f"💬 Mensagem formatada: {mensagem_formatada[:100]}")
+
         # Enviar via WhatsApp
-        await whatsapp_api.send_text(phone, message)
+        await whatsapp_api.send_text(phone, mensagem_formatada)
 
         # Salvar mensagem no Supabase
         supabase = create_client(settings.supabase_url, settings.supabase_service_key)
