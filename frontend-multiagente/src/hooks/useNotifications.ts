@@ -6,21 +6,34 @@ import type { Conversa } from '@/types'
 interface UseNotificationsOptions {
   enabled?: boolean
   conversas: Conversa[]
+  userDepartamento?: string  // Departamento do usuário logado
+  userRole?: string  // Role do usuário
 }
 
-export function useNotifications({ enabled = true, conversas }: UseNotificationsOptions) {
+export function useNotifications({ enabled = true, conversas, userDepartamento, userRole }: UseNotificationsOptions) {
   const conversasAntigasRef = useRef<Conversa[]>([])
 
   useEffect(() => {
     if (!enabled) return
+
+    // Super admin não recebe notificações de transferência (muito barulho)
+    const isAdmin = userRole === 'super_admin'
 
     const conversasAntigas = conversasAntigasRef.current
 
     conversas.forEach(conversa => {
       const antiga = conversasAntigas.find(c => c.id === conversa.id)
 
+      // Nova conversa apareceu na lista
       if (!antiga) {
-        if (conversa.nao_lidas > 0) {
+        // Se é departamento (não super admin) e a conversa acabou de chegar
+        if (!isAdmin && userDepartamento && conversa.departamento_slug === userDepartamento) {
+          notificationService.notificar(
+            'transferencia',
+            `📥 Nova conversa transferida`,
+            `${conversa.lead.nome} - ${conversa.lead.telefone}`
+          )
+        } else if (conversa.nao_lidas > 0) {
           notificationService.notificar(
             'nova_mensagem',
             `Nova mensagem de ${conversa.lead.nome}`,
@@ -30,6 +43,7 @@ export function useNotifications({ enabled = true, conversas }: UseNotifications
         return
       }
 
+      // Novas mensagens
       if (conversa.nao_lidas > antiga.nao_lidas) {
         const novasMensagens = conversa.nao_lidas - antiga.nao_lidas
 
@@ -37,8 +51,6 @@ export function useNotifications({ enabled = true, conversas }: UseNotifications
 
         if (conversa.prioridade === 'urgente') {
           tipo = 'urgente'
-        } else if (conversa.departamento && !antiga.departamento) {
-          tipo = 'transferencia'
         }
 
         notificationService.notificar(
@@ -48,14 +60,23 @@ export function useNotifications({ enabled = true, conversas }: UseNotifications
         )
       }
 
-      if (conversa.departamento && !antiga.departamento) {
-        notificationService.notificar(
-          'transferencia',
-          `Conversa transferida: ${conversa.lead.nome}`,
-          `Departamento: ${conversa.departamento.nome}`
-        )
+      // Conversa foi transferida PARA este departamento
+      // Só notifica departamentos (não super admin)
+      if (!isAdmin && userDepartamento) {
+        const antigaDepartamento = antiga.departamento_slug
+        const novoDepartamento = conversa.departamento_slug
+
+        // Conversa chegou neste departamento
+        if (novoDepartamento === userDepartamento && antigaDepartamento !== userDepartamento) {
+          notificationService.notificar(
+            'transferencia',
+            `📥 Conversa transferida para você`,
+            `${conversa.lead.nome} - ${conversa.lead.telefone}`
+          )
+        }
       }
 
+      // Urgente
       if (conversa.prioridade === 'urgente' && antiga.prioridade !== 'urgente') {
         notificationService.notificar(
           'urgente',
@@ -67,7 +88,7 @@ export function useNotifications({ enabled = true, conversas }: UseNotifications
 
     conversasAntigasRef.current = conversas
 
-  }, [conversas, enabled])
+  }, [conversas, enabled, userDepartamento, userRole])
 
   return {
     notificar: (tipo: NotificationType, titulo: string, mensagem?: string) => {

@@ -201,8 +201,18 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 }
 
 function App() {
+  console.log('🎯 APP INICIADO')
+
   const { isAuthenticated, usuario, logout } = useAuth()
-  const { conversas, mensagens, loading, error } = useConversas()
+  console.log('🔐 isAuthenticated:', isAuthenticated)
+  console.log('👤 usuario:', usuario)
+
+  const { conversas, mensagens, loading, error, refetch } = useConversas()
+  console.log('📊 DADOS DO useConversas:')
+  console.log('  - conversas:', conversas.length)
+  console.log('  - mensagens:', Object.keys(mensagens).length)
+  console.log('  - loading:', loading)
+  console.log('  - error:', error)
 
   // Verificar autenticação ao carregar
   useEffect(() => {
@@ -235,9 +245,10 @@ function App() {
               </div>
             ) : (
               <Dashboard
-                conversas={conversas.length > 0 ? conversas : mockConversas}
-                mensagens={Object.keys(mensagens).length > 0 ? mensagens : mockMensagens}
+                conversas={conversas}
+                mensagens={mensagens}
                 onLogout={logout}
+                onRefetch={refetch}
                 userRole={usuario?.role as 'super_admin' | 'vendas' | 'assistencia-tecnica' | 'financeiro' | 'suporte-ti' || 'super_admin'}
                 userDepartamento={usuario?.departamento_slug || undefined}
               />

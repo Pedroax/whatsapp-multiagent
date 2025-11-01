@@ -56,12 +56,17 @@ class MediaProcessor:
                 temp_input.write(audio_bytes)
                 temp_input.close()
 
-                # Caminho do FFmpeg
-                ffmpeg_path = Path(__file__).parent.parent / "ffmpeg" / "bin" / "ffmpeg.exe"
+                # Caminho do FFmpeg (detecta Windows ou Linux)
+                if sys.platform == "win32":
+                    ffmpeg_path = Path(__file__).parent.parent / "ffmpeg" / "bin" / "ffmpeg.exe"
+                    ffmpeg_cmd = str(ffmpeg_path)
+                else:
+                    # No Linux, usa ffmpeg do sistema
+                    ffmpeg_cmd = "ffmpeg"
 
                 # Converte usando FFmpeg
                 cmd = [
-                    str(ffmpeg_path),
+                    ffmpeg_cmd,
                     "-i", temp_input.name,
                     "-vn",  # Sem vídeo
                     "-ar", "16000",  # Sample rate 16kHz (ideal para Whisper)

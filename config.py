@@ -6,7 +6,7 @@ from typing import Optional
 class Settings(BaseSettings):
     """Configurações do ambiente"""
 
-    # LLM (usando OpenAI GPT-4)
+    # LLM (usando Google Gemini)
     google_api_key: str  # Obrigatório
     openai_api_key: Optional[str] = None  # Opcional (fallback)
     anthropic_api_key: Optional[str] = None  # Opcional (não usado)
@@ -31,6 +31,10 @@ class Settings(BaseSettings):
     debug: bool = False
     log_level: str = "INFO"
     debounce_seconds: float = 5.0
+
+    # Monitoring
+    monitor_username: str = "admin"
+    monitor_password: str = "admin123"
 
     class Config:
         env_file = ".env"

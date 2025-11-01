@@ -33,13 +33,13 @@ class SessionManager:
 
     async def get_session(self, phone: str) -> ConversationState:
         """
-        Recupera sessão existente ou cria nova
+        Recupera sessão existente ou cria nova COM MEMÓRIA DE LONGO PRAZO
 
         Args:
             phone: Telefone do usuário
 
         Returns:
-            Estado da conversa
+            Estado da conversa com contexto histórico
         """
         if self.use_supabase and self.supabase:
             try:
@@ -51,11 +51,36 @@ class SessionManager:
                     session_data = response.data[0]
                     state = self._deserialize_state(session_data["state"])
                     logger.info(f"📂 Sessão recuperada do Supabase: {phone}")
-                    return state
                 else:
-                    # Nova sessão
+                    # Nova sessão - mas vamos buscar histórico antigo
                     logger.info(f"🆕 Nova sessão criada: {phone}")
-                    return create_initial_state(phone)
+                    state = create_initial_state(phone)
+
+                # 🧠 MEMÓRIA DE LONGO PRAZO: Buscar dados históricos APENAS SE for nova sessão
+                # Se a sessão já existe no Redis, NÃO carrega histórico (já está no state)
+                if not (response.data and len(response.data) > 0):
+                    # Só carrega histórico se for NOVA sessão (não tinha no Redis)
+                    historical_data = await self._load_historical_context(phone)
+
+                    if historical_data:
+                        # Adicionar contexto histórico ao state APENAS se o cliente tiver interações FECHADAS
+                        # Não conta conversa atual ainda aberta
+                        if historical_data.get("total_interacoes", 0) > 0:
+                            state["nome_cliente"] = historical_data.get("nome_cliente")
+                            state["cnpj"] = historical_data.get("cnpj")
+                            state["codigo_cliente"] = historical_data.get("codigo_cliente")
+                            state["codigo_empresa"] = historical_data.get("codigo_empresa")
+                            state["nome_empresa"] = historical_data.get("nome_empresa")
+                            state["historico_interacoes"] = historical_data.get("total_interacoes", 0)
+                            state["ultimo_pedido"] = historical_data.get("ultimo_pedido")
+
+                            logger.success(
+                                f"🧠 Memória carregada para {phone}: "
+                                f"Nome={historical_data.get('nome_cliente')}, "
+                                f"Interações={historical_data.get('total_interacoes', 0)}"
+                            )
+
+                return state
 
             except Exception as e:
                 logger.error(f"❌ Erro ao recuperar sessão do Supabase: {e}")
@@ -86,6 +111,7 @@ class SessionManager:
                 expires_at = (datetime.now() + timedelta(hours=24)).isoformat()
 
                 # Upsert no Supabase (insert ou update)
+                # IMPORTANTE: on_conflict="phone" garante que atualiza se já existir
                 self.supabase.table("chat_sessions").upsert({
                     "phone": phone,
                     "state": state_json,
@@ -142,10 +168,8 @@ class SessionManager:
             }
             if hasattr(msg, "name"):
                 msg_dict["name"] = msg.name
-            if hasattr(msg, "tool_calls"):
-                msg_dict["tool_calls"] = msg.tool_calls
-            if hasattr(msg, "tool_call_id"):
-                msg_dict["tool_call_id"] = msg.tool_call_id
+            # NÃO serializa tool_calls - causam erro na deserialização
+            # As tool calls já foram executadas e não precisam ser persistidas
             messages_serialized.append(msg_dict)
 
         # Cria cópia do state para serialização
@@ -177,24 +201,117 @@ class SessionManager:
             if msg_type == "HumanMessage":
                 messages.append(HumanMessage(content=content))
             elif msg_type == "AIMessage":
+                # IMPORTANTE: Remove tool_calls das AIMessages persistidas
+                # Tool calls causam erro quando deserializadas porque o tool_call_id
+                # das ToolMessages correspondentes fica quebrado
                 msg = AIMessage(content=content)
-                if "tool_calls" in msg_dict:
-                    msg.tool_calls = msg_dict["tool_calls"]
+                # NÃO adiciona tool_calls de volta - elas já foram executadas
                 messages.append(msg)
             elif msg_type == "SystemMessage":
                 messages.append(SystemMessage(content=content))
-            elif msg_type == "ToolMessage":
-                tool_call_id = msg_dict.get("tool_call_id", "")
-                msg = ToolMessage(content=content, tool_call_id=tool_call_id)
-                if "name" in msg_dict:
-                    msg.name = msg_dict["name"]
-                messages.append(msg)
+            # SKIP ToolMessages - elas causam erro de tool_call_id inválido
+            # ToolMessages são intermediárias e não precisam ser persistidas
 
         # Reconstrói estado completo
         state = {k: v for k, v in state_json.items() if k != "messages"}
         state["messages"] = messages
 
         return state
+
+    async def _load_historical_context(self, phone: str) -> Optional[dict]:
+        """
+        Carrega contexto histórico do cliente de conversas anteriores
+
+        Busca informações como:
+        - Nome do cliente
+        - CNPJ usado anteriormente
+        - Códigos de cliente/empresa
+        - Número de interações anteriores
+        - Último pedido
+
+        Args:
+            phone: Telefone do cliente
+
+        Returns:
+            Dict com dados históricos ou None
+        """
+        if not self.supabase:
+            return None
+
+        try:
+            # Buscar APENAS conversas FECHADAS anteriores (não conta conversa aberta atual)
+            # Isso evita alucinação onde IA reconhece cliente na primeira conversa
+            conversas_result = self.supabase.table("conversas")\
+                .select("id, nome_lead, status, created_at, updated_at")\
+                .eq("phone", phone)\
+                .eq("status", "fechada")\
+                .order("updated_at", desc=True)\
+                .limit(10)\
+                .execute()
+
+            if not conversas_result.data or len(conversas_result.data) == 0:
+                # Nenhuma conversa FECHADA anterior = cliente novo!
+                return None
+
+            total_interacoes = len(conversas_result.data)
+            conversa_ids = [c["id"] for c in conversas_result.data]
+            nome_cliente = conversas_result.data[0].get("nome_lead")  # Pega o mais recente
+
+            # Buscar mensagens dessas conversas para extrair CNPJ e outras informações
+            mensagens_result = self.supabase.table("mensagens")\
+                .select("conteudo, remetente")\
+                .in_("conversa_id", conversa_ids)\
+                .order("enviada_em", desc=False)\
+                .limit(100)\
+                .execute()
+
+            # Extrair CNPJ e códigos das mensagens (se a IA salvou)
+            cnpj = None
+            codigo_cliente = None
+            codigo_empresa = None
+            nome_empresa = None
+
+            if mensagens_result.data:
+                for msg in mensagens_result.data:
+                    conteudo = msg.get("conteudo", "")
+
+                    # Tentar extrair CNPJ (14 dígitos seguidos)
+                    import re
+                    cnpj_match = re.search(r'\b\d{14}\b', conteudo)
+                    if cnpj_match and not cnpj:
+                        cnpj = cnpj_match.group()
+
+            # Buscar pedidos anteriores
+            pedidos_result = self.supabase.table("pedidos")\
+                .select("numero_pedido, valor_total, created_at")\
+                .eq("telefone", phone)\
+                .order("created_at", desc=True)\
+                .limit(1)\
+                .execute()
+
+            ultimo_pedido = None
+            if pedidos_result.data and len(pedidos_result.data) > 0:
+                ultimo_pedido = {
+                    "numero": pedidos_result.data[0].get("numero_pedido"),
+                    "valor": pedidos_result.data[0].get("valor_total"),
+                    "data": pedidos_result.data[0].get("created_at")
+                }
+
+            historical_data = {
+                "nome_cliente": nome_cliente,
+                "cnpj": cnpj,
+                "codigo_cliente": codigo_cliente,
+                "codigo_empresa": codigo_empresa,
+                "nome_empresa": nome_empresa,
+                "total_interacoes": total_interacoes,
+                "ultimo_pedido": ultimo_pedido
+            }
+
+            return historical_data
+
+        except Exception as e:
+            logger.error(f"❌ Erro ao carregar contexto histórico: {e}")
+            return None
 
     async def close(self):
         """Fecha conexões"""

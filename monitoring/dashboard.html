@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Alice LC - Monitoramento</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0f172a;
+            color: #e2e8f0;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 30px;
+            border-radius: 16px;
+            margin-bottom: 30px;
+            box-shadow: 0 10px 40px rgba(102, 126, 234, 0.3);
+        }
+
+        h1 {
+            font-size: 32px;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+
+        .subtitle {
+            opacity: 0.9;
+            font-size: 14px;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .card {
+            background: #1e293b;
+            border-radius: 12px;
+            padding: 24px;
+            border: 1px solid #334155;
+            transition: all 0.3s ease;
+        }
+
+        .card:hover {
+            border-color: #667eea;
+            transform: translateY(-2px);
+            box-shadow: 0 8px 30px rgba(102, 126, 234, 0.2);
+        }
+
+        .card-title {
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: #94a3b8;
+            margin-bottom: 16px;
+            font-weight: 600;
+        }
+
+        .status {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .status-healthy {
+            background: rgba(34, 197, 94, 0.2);
+            color: #22c55e;
+        }
+
+        .status-degraded {
+            background: rgba(251, 191, 36, 0.2);
+            color: #fbbf24;
+        }
+
+        .status-offline {
+            background: rgba(239, 68, 68, 0.2);
+            color: #ef4444;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .metric {
+            margin: 16px 0;
+        }
+
+        .metric-label {
+            font-size: 13px;
+            color: #94a3b8;
+            margin-bottom: 6px;
+        }
+
+        .metric-value {
+            font-size: 28px;
+            font-weight: 700;
+            color: #e2e8f0;
+        }
+
+        .metric-unit {
+            font-size: 16px;
+            color: #64748b;
+            margin-left: 4px;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: #334155;
+            border-radius: 4px;
+            overflow: hidden;
+            margin-top: 8px;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            transition: width 0.5s ease;
+        }
+
+        .progress-fill.warning {
+            background: linear-gradient(90deg, #fbbf24, #f59e0b);
+        }
+
+        .progress-fill.danger {
+            background: linear-gradient(90deg, #ef4444, #dc2626);
+        }
+
+        .table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 16px;
+        }
+
+        .table th {
+            text-align: left;
+            padding: 12px;
+            background: #334155;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: #94a3b8;
+        }
+
+        .table td {
+            padding: 12px;
+            border-bottom: 1px solid #334155;
+        }
+
+        .refresh-info {
+            text-align: center;
+            color: #64748b;
+            font-size: 13px;
+            margin-top: 20px;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #64748b;
+        }
+
+        .timestamp {
+            color: #64748b;
+            font-size: 12px;
+            margin-top: 8px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🤖 Alice LC - Monitoramento</h1>
+            <p class="subtitle">Sistema de Monitoramento em Tempo Real</p>
+        </header>
+
+        <div id="dashboard" class="loading">
+            Carregando dados...
+        </div>
+
+        <div class="refresh-info">
+            Atualização automática a cada <strong>10 segundos</strong>
+        </div>
+    </div>
+
+    <script>
+        let lastUpdate = null;
+
+        async function fetchHealthStatus() {
+            try {
+                const response = await fetch('/monitor/api/health');
+                const data = await response.json();
+                renderDashboard(data);
+                lastUpdate = new Date();
+            } catch (error) {
+                console.error('Erro ao buscar status:', error);
+                document.getElementById('dashboard').innerHTML = `
+                    <div class="card">
+                        <p style="color: #ef4444;">❌ Erro ao carregar dados do monitoramento</p>
+                    </div>
+                `;
+            }
+        }
+
+        function getStatusClass(status) {
+            if (status === 'healthy') return 'status-healthy';
+            if (status === 'degraded') return 'status-degraded';
+            return 'status-offline';
+        }
+
+        function getStatusIcon(status) {
+            if (status === 'healthy') return '●';
+            if (status === 'degraded') return '◐';
+            return '○';
+        }
+
+        function renderDashboard(data) {
+            const dashboard = document.getElementById('dashboard');
+
+            dashboard.innerHTML = `
+                <div class="grid">
+                    <!-- Backend Status -->
+                    <div class="card">
+                        <div class="card-title">🖥️ Backend</div>
+                        <div class="status ${getStatusClass(data.backend.status)}">
+                            <span class="status-dot">${getStatusIcon(data.backend.status)}</span>
+                            ${data.backend.status}
+                        </div>
+                        ${data.backend.response_time_ms ? `
+                            <div class="metric">
+                                <div class="metric-label">Tempo de Resposta</div>
+                                <div class="metric-value">${data.backend.response_time_ms.toFixed(0)}<span class="metric-unit">ms</span></div>
+                            </div>
+                        ` : ''}
+                    </div>
+
+                    <!-- Evolution API -->
+                    <div class="card">
+                        <div class="card-title">💬 WhatsApp (Evolution)</div>
+                        <div class="status ${getStatusClass(data.evolution_api.status)}">
+                            <span class="status-dot">${getStatusIcon(data.evolution_api.status)}</span>
+                            ${data.evolution_api.status}
+                        </div>
+                        ${data.evolution_api.response_time_ms ? `
+                            <div class="metric">
+                                <div class="metric-label">Tempo de Resposta</div>
+                                <div class="metric-value">${data.evolution_api.response_time_ms.toFixed(0)}<span class="metric-unit">ms</span></div>
+                            </div>
+                        ` : ''}
+                    </div>
+
+                    <!-- LC ERP API -->
+                    <div class="card">
+                        <div class="card-title">🏢 LC ERP API</div>
+                        <div class="status ${getStatusClass(data.lc_erp_api.status)}">
+                            <span class="status-dot">${getStatusIcon(data.lc_erp_api.status)}</span>
+                            ${data.lc_erp_api.status}
+                        </div>
+                        ${data.lc_erp_api.response_time_ms ? `
+                            <div class="metric">
+                                <div class="metric-label">Tempo de Resposta</div>
+                                <div class="metric-value">${data.lc_erp_api.response_time_ms.toFixed(0)}<span class="metric-unit">ms</span></div>
+                            </div>
+                        ` : ''}
+                    </div>
+
+                    <!-- Supabase -->
+                    <div class="card">
+                        <div class="card-title">🗄️ Banco de Dados (Supabase)</div>
+                        <div class="status ${getStatusClass(data.supabase.status)}">
+                            <span class="status-dot">${getStatusIcon(data.supabase.status)}</span>
+                            ${data.supabase.status}
+                        </div>
+                    </div>
+
+                    <!-- System Resources -->
+                    <div class="card">
+                        <div class="card-title">⚙️ Recursos do Sistema</div>
+                        <div class="metric">
+                            <div class="metric-label">CPU</div>
+                            <div class="metric-value">${data.system_resources.cpu_percent.toFixed(1)}<span class="metric-unit">%</span></div>
+                            <div class="progress-bar">
+                                <div class="progress-fill ${data.system_resources.cpu_percent > 90 ? 'danger' : data.system_resources.cpu_percent > 70 ? 'warning' : ''}"
+                                     style="width: ${data.system_resources.cpu_percent}%"></div>
+                            </div>
+                        </div>
+                        <div class="metric">
+                            <div class="metric-label">Memória</div>
+                            <div class="metric-value">${data.system_resources.memory_percent.toFixed(1)}<span class="metric-unit">%</span></div>
+                            <div class="progress-bar">
+                                <div class="progress-fill ${data.system_resources.memory_percent > 90 ? 'danger' : data.system_resources.memory_percent > 70 ? 'warning' : ''}"
+                                     style="width: ${data.system_resources.memory_percent}%"></div>
+                            </div>
+                            <div class="timestamp">${data.system_resources.memory_used_gb.toFixed(1)}GB / ${data.system_resources.memory_total_gb.toFixed(1)}GB</div>
+                        </div>
+                    </div>
+
+                    <!-- Gemini Health -->
+                    <div class="card">
+                        <div class="card-title">🔮 Gemini 2.0 Flash</div>
+                        <div class="status ${getStatusClass(data.gemini_health.status)}">
+                            <span class="status-dot">${getStatusIcon(data.gemini_health.status)}</span>
+                            ${data.gemini_health.status}
+                        </div>
+                        <div class="metric">
+                            <div class="metric-label">Erros Consecutivos</div>
+                            <div class="metric-value">${data.gemini_health.consecutive_errors}<span class="metric-unit">/ 5</span></div>
+                        </div>
+                    </div>
+
+                    <!-- GPT-4o Health -->
+                    <div class="card">
+                        <div class="card-title">🧠 GPT-4o</div>
+                        <div class="status ${getStatusClass(data.gpt_health.status)}">
+                            <span class="status-dot">${getStatusIcon(data.gpt_health.status)}</span>
+                            ${data.gpt_health.status}
+                        </div>
+                        <div class="metric">
+                            <div class="metric-label">Erros Consecutivos</div>
+                            <div class="metric-value">${data.gpt_health.consecutive_errors}<span class="metric-unit">/ 5</span></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="timestamp" style="text-align: center; margin-top: 20px;">
+                    Última atualização: ${new Date(data.timestamp).toLocaleString('pt-BR')}
+                </div>
+            `;
+        }
+
+        // Inicia atualização automática
+        fetchHealthStatus();
+        setInterval(fetchHealthStatus, 10000); // Atualiza a cada 10 segundos
+    </script>
+</body>
+</html>

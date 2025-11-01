@@ -10,6 +10,11 @@ export default defineConfig({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  define: {
+    'import.meta.env.VITE_API_URL': JSON.stringify('https://lcbaterias.automatexia.com.br'),
+    'import.meta.env.VITE_SUPABASE_URL': JSON.stringify('https://iexwyilovmxllfgggbvp.supabase.co'),
+    'import.meta.env.VITE_SUPABASE_ANON_KEY': JSON.stringify('eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlleHd5aWxvdm14bGxmZ2dnYnZwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTA3MjI5NTksImV4cCI6MjA2NjI5ODk1OX0.hrodZAa2W-2BlHEin8HdCg--2gOvQCpklSnBkqrf9no'),
+  },
   build: {
     rollupOptions: {
       onwarn(warning, warn) {

@@ -610,8 +610,8 @@ async def consultar_baterias(query: str) -> Dict[str, Any]:
         }
 
 
-@tool(args_schema=EnviarPedidoInput)
-async def enviar_pedido(pedido_json: Dict[str, Any]) -> Dict[str, Any]:
+@tool
+async def enviar_pedido(pedido_json: str) -> Dict[str, Any]:
     """
     Envia pedido para a API Fausoft com normalização robusta de produtos.
 
@@ -639,9 +639,22 @@ async def enviar_pedido(pedido_json: Dict[str, Any]) -> Dict[str, Any]:
         - status_pedido: string (faturamento/financeiro)
     """
     logger.info(f"📤 Enviando pedido...")
+    logger.info(f"📥 Tipo recebido: {type(pedido_json)}")
     logger.debug(f"📥 Dados recebidos: {pedido_json}")
 
     try:
+        # Converter string para dict se necessário
+        if isinstance(pedido_json, str):
+            import json
+            pedido_json = json.loads(pedido_json)
+        elif not isinstance(pedido_json, dict):
+            logger.error(f"❌ Tipo inválido: {type(pedido_json)}")
+            return {
+                "sucesso": False,
+                "erro": f"Esperado dict ou string JSON, recebido {type(pedido_json).__name__}"
+            }
+
+        logger.info(f"✅ Dados convertidos para dict com sucesso")
         # ===================================================================
         # NORMALIZAÇÃO DE PRODUTOS (À PROVA DE FALHAS)
         # ===================================================================
@@ -843,7 +856,7 @@ async def enviar_pedido(pedido_json: Dict[str, Any]) -> Dict[str, Any]:
             response = await client.post(
                 "https://www.grupolc.app.br/api/",
                 json=payload,
-                timeout=30.0
+                timeout=60.0  # Aumentado para 60s pois a API está lenta
             )
 
             logger.debug(f"📥 Status Code: {response.status_code}")
@@ -884,12 +897,11 @@ async def enviar_pedido(pedido_json: Dict[str, Any]) -> Dict[str, Any]:
             }
 
     except httpx.TimeoutException:
-        logger.error(f"⏱️ Timeout ao enviar pedido")
+        logger.error(f"⏱️ Timeout ao enviar pedido (60s)")
         return {
             "sucesso": False,
-            "erro": "Timeout na conexão com a API (30s)",
-            "transferir_para_vendas": True,
-            "mensagem_cliente": "Vou transferir você para nossa equipe de vendas para finalizar seu pedido."
+            "erro": "A API demorou muito para responder (timeout de 60s). Pode estar com lentidão. Tente novamente ou peça ao cliente aguardar um momento.",
+            "tipo_erro": "timeout"
         }
     except Exception as e:
         logger.error(f"💥 Erro ao enviar pedido: {str(e)}")
@@ -897,9 +909,7 @@ async def enviar_pedido(pedido_json: Dict[str, Any]) -> Dict[str, Any]:
         traceback.print_exc()
         return {
             "sucesso": False,
-            "erro": f"Erro de comunicação: {str(e)}",
-            "transferir_para_vendas": True,
-            "mensagem_cliente": "Vou transferir você para nossa equipe de vendas para finalizar seu pedido."
+            "erro": f"Erro de comunicação: {str(e)}"
         }
 
 

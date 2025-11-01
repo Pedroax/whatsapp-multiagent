@@ -12,19 +12,22 @@ from alice.state import ConversationState, FlowState, create_initial_state
 from alice.tools import ALICE_TOOLS
 from alice.prompt import ALICE_SYSTEM_PROMPT
 from alice.analytics import analytics_tracker
+from alice.message_optimizer import MessageOptimizer
 
 
 class AliceAgent:
     """Agente Alice - Vendedora virtual da LC Baterias"""
 
-    def __init__(self):
+    def __init__(self, model_name: str = "gpt-4o"):
         """Inicializa o agente Alice"""
 
-        # LLM principal (GPT-4)
+        # LLM principal (GPT-4o com cache automático)
+        # OpenAI cacheia automaticamente prompts > 1024 tokens que se repetem
+        # Economia: 50% de desconto nos tokens cacheados
         self.llm = ChatOpenAI(
-            model="gpt-4o",
+            model=model_name,
             api_key=settings.openai_api_key,
-            temperature=0.1,  # Baixa temperatura para respostas mais consistentes
+            temperature=0.1,
             max_tokens=4096
         )
 
@@ -34,10 +37,13 @@ class AliceAgent:
         # Tool node para executar ferramentas
         self.tool_node = ToolNode(ALICE_TOOLS)
 
+        # Otimizador de mensagens (economiza tokens)
+        self.message_optimizer = MessageOptimizer()
+
         # Grafo de estados
         self.graph = self._create_graph()
 
-        logger.info("✅ Alice Agent inicializada")
+        logger.info("✅ Alice Agent inicializada com otimização de mensagens")
 
     def _create_graph(self) -> StateGraph:
         """Cria o grafo de estados do agente"""
@@ -48,6 +54,7 @@ class AliceAgent:
         workflow.add_node("agent", self._agent_node)
         workflow.add_node("tools", self.tool_node)
         workflow.add_node("process_tool_results", self._process_tool_results_node)
+        workflow.add_node("extract_info", self._extract_info_node)
 
         # Entry point
         workflow.set_entry_point("agent")
@@ -58,7 +65,7 @@ class AliceAgent:
             self._should_continue,
             {
                 "continue": "tools",
-                "end": END
+                "extract": "extract_info"  # Novo caminho: extrai info e finaliza
             }
         )
 
@@ -67,6 +74,9 @@ class AliceAgent:
 
         # Volta para agent após processar resultados
         workflow.add_edge("process_tool_results", "agent")
+
+        # Após extrair info, finaliza
+        workflow.add_edge("extract_info", END)
 
         return workflow.compile()
 
@@ -83,27 +93,23 @@ class AliceAgent:
         if context_info:
             messages.append(SystemMessage(content=f"CONTEXTO ATUAL:\n{context_info}"))
 
-        # Adiciona histórico de mensagens (filtra ToolMessages com tool_call_id vazio/inválido)
-        from langchain_core.messages import ToolMessage
-
-        filtered_messages = []
-        for msg in state["messages"]:
-            # Se é ToolMessage com tool_call_id vazio/inválido, pula
-            if isinstance(msg, ToolMessage):
-                if not hasattr(msg, 'tool_call_id') or not msg.tool_call_id:
-                    logger.warning(f"⚠️ Pulando ToolMessage com tool_call_id vazio")
-                    continue
-            filtered_messages.append(msg)
-
-        # Limita às últimas 10 mensagens
-        recent_messages = filtered_messages[-10:] if len(filtered_messages) > 10 else filtered_messages
-        messages.extend(recent_messages)
+        # 💰 OTIMIZAÇÃO: Comprime histórico se necessário
+        conversation_history = state["messages"]
+        if self.message_optimizer.should_compress(conversation_history):
+            optimized_history = self.message_optimizer.optimize_messages(conversation_history)
+            messages.extend(optimized_history)
+            logger.debug(f"💰 Histórico otimizado: {len(conversation_history)} → {len(optimized_history)} mensagens")
+        else:
+            # Se não precisa comprimir, usa histórico completo
+            messages.extend(conversation_history)
 
         # Chama LLM
         logger.info(f"🤖 Alice processando mensagem (estado: {state['current_state']})")
         response = self.llm_with_tools.invoke(messages)
 
         # Atualiza mensagens
+        # NOTA: extração de info será feita no _process_tool_results_node
+        # para ter acesso à resposta completa da Alice
         return {"messages": [response]}
 
     def _build_context_from_state(self, state: ConversationState) -> str:
@@ -157,6 +163,70 @@ class AliceAgent:
 
         return "\n".join(context_parts)
 
+    def _extract_info_from_conversation(self, state: ConversationState) -> Dict[str, Any]:
+        """
+        Extrai informações estruturadas da conversa (nome, CNPJ) das mensagens do usuário.
+
+        Analisa as últimas mensagens para identificar quando o cliente fornece:
+        - Nome (resposta a "Como posso chamá-lo(a)?")
+        - CNPJ (números no formato 14 dígitos)
+        """
+        import re
+        updates = {}
+
+        messages = state.get("messages", [])
+        if len(messages) < 2:
+            return updates
+
+        # Pega últimas 4 mensagens (suficiente para contexto)
+        recent_messages = messages[-4:]
+
+        # Procura por CNPJ em qualquer mensagem do usuário
+        for msg in recent_messages:
+            if hasattr(msg, 'type') and msg.type == 'human':
+                content = msg.content.strip()
+
+                # Extrai CNPJ (apenas números, 14 dígitos)
+                cnpj_match = re.search(r'\b(\d{14})\b', content.replace('.', '').replace('/', '').replace('-', ''))
+                if cnpj_match and not state.get("cnpj"):
+                    updates["cnpj"] = cnpj_match.group(1)
+                    logger.info(f"📝 CNPJ extraído da conversa: {cnpj_match.group(1)}")
+
+                # Extrai nome: se a mensagem anterior da Alice perguntou o nome
+                # e esta mensagem é razoavelmente curta (< 100 chars) e não tem números demais
+                if len(content) < 100 and len(re.findall(r'\d', content)) < 5:
+                    # Verifica se Alice perguntou o nome antes
+                    idx = recent_messages.index(msg)
+                    if idx > 0:
+                        prev_msg = recent_messages[idx - 1]
+                        if hasattr(prev_msg, 'type') and prev_msg.type == 'ai':
+                            prev_content = prev_msg.content.lower()
+                            # Verifica se perguntou nome
+                            if any(phrase in prev_content for phrase in [
+                                'como posso chamá-lo',
+                                'qual seu nome',
+                                'me informe seu nome',
+                                'poderia me informar seu nome',
+                                'pode me dizer seu nome'
+                            ]):
+                                # É uma resposta de nome!
+                                if not state.get("nome_cliente"):
+                                    # Limpa o nome (remove saudações comuns)
+                                    nome = content.strip()
+                                    for saudacao in ['olá', 'oi', 'bom dia', 'boa tarde', 'boa noite', 'é']:
+                                        nome = re.sub(rf'\b{saudacao}\b', '', nome, flags=re.IGNORECASE).strip()
+
+                                    # Remove pontuação extra
+                                    nome = re.sub(r'[,!.]$', '', nome).strip()
+
+                                    if nome and len(nome) > 1:
+                                        # Capitaliza primeira letra de cada palavra
+                                        nome = ' '.join(word.capitalize() for word in nome.split())
+                                        updates["nome_cliente"] = nome
+                                        logger.info(f"📝 Nome extraído da conversa: {nome}")
+
+        return updates
+
     def _process_tool_results_node(self, state: ConversationState) -> Dict[str, Any]:
         """
         Processa resultados das tools e extrai dados críticos para o state.
@@ -165,13 +235,15 @@ class AliceAgent:
         - Extrair dados da tool verificar_cliente e salvar no state
         - Registrar métricas de analytics
         - Extrair dados de outras tools conforme necessário
+        - Extrair informações estruturadas da conversa (nome, CNPJ)
         """
         # Pega a última mensagem (resultado da tool)
         last_message = state["messages"][-1]
 
-        # Se não é uma ToolMessage, retorna state vazio mas válido
+        # Se não é uma ToolMessage, não faz nada
         if not hasattr(last_message, "content"):
-            return {"tentativas_erro": state.get("tentativas_erro", 0)}
+            # Mas mesmo assim extrai info da conversa
+            return self._extract_info_from_conversation(state)
 
         updates = {}
         phone = state.get("phone", "")
@@ -212,23 +284,53 @@ class AliceAgent:
             except:
                 pass
 
-        # Analytics: Registrar cotação enviada
+        # Analytics: Registrar cotação enviada E SALVAR NO STATE
         elif hasattr(last_message, "name") and last_message.name == "consultar_baterias":
             try:
                 import json
                 tool_result = json.loads(last_message.content) if isinstance(last_message.content, str) else last_message.content
 
                 if tool_result.get("sucesso"):
-                    valor_total = float(tool_result.get("valor_total_geral", 0))
+                    valor_total_str = tool_result.get("valor_total_geral", "0")
+                    valor_total = float(valor_total_str)
                     produtos = tool_result.get("produtos", [])
+
+                    # CRÍTICO: Salvar produtos com valor_unitario no state
+                    # para usar no enviar_pedido
+                    produtos_com_valores = []
+                    for p in produtos:
+                        if p.get("sucesso"):
+                            produtos_com_valores.append({
+                                "codigo": p["codigo"],
+                                "quantidade": p["quantidade"],
+                                "valor_unitario": float(p["valor_unitario"]),
+                                "valor_total": float(p["valor_total"])
+                            })
+
+                    updates["produtos_escolhidos"] = produtos_com_valores
+                    updates["valor_total"] = valor_total
+                    updates["cotacao_detalhada"] = tool_result
+
+                    logger.success(
+                        f"💾 Cotação salva no state: {len(produtos_com_valores)} produtos, "
+                        f"total R$ {valor_total:.2f}"
+                    )
+
+                    # Analytics
                     analytics_tracker.registrar_cotacao_enviada(phone, valor_total, produtos)
-            except:
-                pass
+            except Exception as e:
+                logger.error(f"❌ Erro ao processar cotação: {e}")
 
         # Analytics: Registrar pedido fechado (SUCESSO!)
         elif hasattr(last_message, "name") and last_message.name == "enviar_pedido":
             try:
                 import json
+
+                # Validar que há conteúdo antes de parsear
+                if not last_message.content or last_message.content.strip() == "":
+                    logger.error("❌ Tool enviar_pedido retornou conteúdo vazio")
+                    return {}
+
                 tool_result = json.loads(last_message.content) if isinstance(last_message.content, str) else last_message.content
 
                 if tool_result.get("sucesso"):
@@ -275,24 +377,41 @@ class AliceAgent:
             except Exception as e:
                 logger.error(f"❌ Erro ao processar transferência: {e}")
 
-        # Se não houve updates, retorna pelo menos tentativas_erro para satisfazer LangGraph
+        # IMPORTANTE: Sempre extrair info da conversa e mesclar com updates
+        extracted_info = self._extract_info_from_conversation(state)
+        updates.update(extracted_info)
+
+        # Se ainda estiver vazio, retorna pelo menos tentativas_erro (campo sempre presente)
         if not updates:
             return {"tentativas_erro": state.get("tentativas_erro", 0)}
 
         return updates
 
+    def _extract_info_node(self, state: ConversationState) -> Dict[str, Any]:
+        """
+        Nó executado quando NÃO há tool calls - extrai informações da conversa
+        e finaliza o processamento
+        """
+        extracted_info = self._extract_info_from_conversation(state)
+
+        # Se não extraiu nada, retorna campo dummy para não dar erro
+        if not extracted_info:
+            return {"tentativas_erro": state.get("tentativas_erro", 0)}
+
+        return extracted_info
+
     def _should_continue(self, state: ConversationState) -> str:
-        """Decide se deve executar tools ou finalizar"""
+        """Decide se deve executar tools ou extrair info e finalizar"""
 
         last_message = state["messages"][-1]
 
-        # Se a última mensagem tem tool_calls, executa
+        # Se a última mensagem tem tool_calls, executa tools
         if hasattr(last_message, "tool_calls") and last_message.tool_calls:
             logger.info(f"🔧 Executando {len(last_message.tool_calls)} tool(s)")
             return "continue"
 
-        # Caso contrário, finaliza
-        return "end"
+        # Caso contrário, extrai info e finaliza
+        return "extract"
 
     async def process_message(
         self,

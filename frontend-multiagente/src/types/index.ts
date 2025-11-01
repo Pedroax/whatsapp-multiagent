@@ -37,10 +37,11 @@ export interface Conversa {
   lead: Lead
   departamento_id?: string
   departamento?: Departamento
+  departamento_slug?: string  // Slug do departamento para filtro
   usuario_atribuido_id?: string
   usuario_atribuido?: Usuario
   status: 'nova' | 'aberta' | 'pendente' | 'resolvida' | 'fechada'
-  modo_ia: 'ativo' | 'pausado' | 'desligado'
+  modo_ia: 'ativo' | 'pausado' | 'desligado' | 'ligado'  // Adicionar 'ligado'
   prioridade: 'baixa' | 'normal' | 'alta' | 'urgente'
   nao_lidas: number
   ultima_mensagem?: Mensagem

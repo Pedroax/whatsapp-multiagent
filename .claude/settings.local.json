@@ -1,7 +1,23 @@
 {
   "permissions": {
     "allow": [
-      "Bash(ping:*)"
+      "Bash(move ContactInfo.tsx ContactInfo-old.tsx)",
+      "Bash(move ContactInfo-simple.tsx ContactInfo.tsx)",
+      "Bash(ssh:*)",
+      "Bash(scp:*)",
+      "Bash(curl -s \"http://138.68.13.174/api/conversas\")",
+      "Bash(python:*)",
+      "Bash(curl -X POST \"http://138.68.13.174/api/conversas/556182563956/delete\")",
+      "Bash(curl -s -X DELETE \"http://138.68.13.174/api/conversas/556182563956\")",
+      "Bash(npm run build:*)",
+      "Bash(cat .env)",
+      "Bash(cat:*)",
+      "Bash(curl:*)",
+      "Bash(xargs sed:*)",
+      "Bash(grep:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)"
     ],
     "deny": [],
     "ask": []

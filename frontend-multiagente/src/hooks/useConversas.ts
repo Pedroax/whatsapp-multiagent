@@ -4,6 +4,8 @@ import type { Conversa, Mensagem } from '@/types'
 import { useAuth } from './useAuth'
 
 export function useConversas() {
+  console.log('🚀 useConversas INICIADO')
+
   const [conversas, setConversas] = useState<Conversa[]>([])
   const [mensagens, setMensagens] = useState<Record<string, Mensagem[]>>({})
   const [loading, setLoading] = useState(true)
@@ -11,22 +13,30 @@ export function useConversas() {
 
   const { usuario } = useAuth()
 
+  console.log('👤 Usuário:', usuario)
+
   useEffect(() => {
     if (usuario) {
-      fetchConversas()
+      // Carga inicial com loading
+      fetchConversas(true)
 
-      // Subscription para atualizações em tempo real
+      // Subscription para atualizações em tempo real - CONVERSAS
       const conversasSubscription = supabase
-        .channel('conversas-changes')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'conversas' }, () => {
-          fetchConversas()
+        .channel('conversas-realtime')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'conversas' }, (payload) => {
+          console.log('🔄 Mudança em conversas:', payload)
+          // Atualiza SEM loading para não perder estado
+          fetchConversas(false)
         })
         .subscribe()
 
+      // Subscription para atualizações em tempo real - MENSAGENS
       const mensagensSubscription = supabase
-        .channel('mensagens-changes')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'mensagens' }, () => {
-          fetchConversas()
+        .channel('mensagens-realtime')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'mensagens' }, (payload) => {
+          console.log('🔄 Mudança em mensagens:', payload)
+          // Atualiza SEM loading para não perder estado
+          fetchConversas(false)
         })
         .subscribe()
 
@@ -37,9 +47,12 @@ export function useConversas() {
     }
   }, [usuario])
 
-  async function fetchConversas() {
+  async function fetchConversas(isInitialLoad = false) {
     try {
-      setLoading(true)
+      // Só mostra loading na primeira carga, não em atualizações
+      if (isInitialLoad) {
+        setLoading(true)
+      }
 
       if (!usuario) {
         setConversas([])
@@ -48,97 +61,77 @@ export function useConversas() {
         return
       }
 
-      // Construir query baseada no usuário
-      let query = supabase.from('conversas').select('*')
+      // Buscar conversas COM mensagens do backend
+      const API_URL = import.meta.env.VITE_API_URL || 'https://lcbaterias.automatexia.com.br'
+      console.log('🔍 Buscando conversas de:', `${API_URL}/api/conversas`)
 
-      // Filtrar por departamento se não for super_admin
-      if (usuario.role !== 'super_admin' && !usuario.pode_ver_todos_departamentos) {
-        if (usuario.departamento_slug) {
-          query = query.eq('departamento_slug', usuario.departamento_slug)
-        }
+      const response = await fetch(`${API_URL}/api/conversas`)
+
+      if (!response.ok) {
+        throw new Error(`Erro ${response.status}: ${response.statusText}`)
       }
 
-      // Buscar conversas
-      const { data: conversasData, error: conversasError } = await query
-        .order('updated_at', { ascending: false })
+      const data = await response.json()
+      console.log('📦 Dados recebidos do backend:', data)
 
-      if (conversasError) throw conversasError
+      const conversasData = data.conversas || []
 
-      // Transformar dados do Supabase para o formato esperado
-      const conversasFormatadas: Conversa[] = (conversasData || []).map(c => ({
+      // Mapear conversas
+      const conversasFormatadas: Conversa[] = conversasData.map((c: any) => ({
         id: c.id,
         empresa_id: c.empresa_id,
-        lead_id: c.lead_id || c.id,
+        lead_id: c.id,
         lead: {
-          id: c.lead_id || c.id,
+          id: c.id,
           empresa_id: c.empresa_id,
           nome: c.nome_lead || 'Cliente',
           telefone: c.phone,
-          email: c.email_lead,
-          tags: c.tags || []
+          tags: []
         },
-        departamento_id: c.departamento_slug,
-        departamento: c.departamento_slug ? {
-          id: c.departamento_slug,
-          empresa_id: c.empresa_id,
-          nome: c.departamento_nome || c.departamento_slug,
-          slug: c.departamento_slug,
-          cor_primaria: '#3B82F6',
-          icone: 'briefcase',
-          ordem: 1,
-          ativo: true
-        } : undefined,
-        status: c.status || 'aberta',
-        modo_ia: c.modo_ia || 'ligado',
-        prioridade: c.prioridade || 'normal',
-        nao_lidas: c.nao_lidas || 0,
-        ultima_mensagem: c.ultima_mensagem ? {
-          id: 'last',
-          conversa_id: c.id,
-          tipo: 'entrada',
-          conteudo: c.ultima_mensagem,
-          enviado_por_ia: false,
-          lida: false,
-          created_at: c.ultima_mensagem_em || c.updated_at
-        } : undefined,
+        departamento_slug: c.departamento_slug,  // ADICIONAR campo para filtro
+        status: 'aberta',
+        modo_ia: c.modo_ia || 'ativo',
+        prioridade: 'normal',
+        nao_lidas: 0,
         created_at: c.created_at,
         updated_at: c.updated_at
       }))
 
-      setConversas(conversasFormatadas)
-
-      // Buscar mensagens para cada conversa
+      // Mapear mensagens
       const mensagensMap: Record<string, Mensagem[]> = {}
-      
-      for (const conversa of conversasFormatadas) {
-        const { data: mensagensData } = await supabase
-          .from('mensagens')
-          .select('*')
-          .eq('conversa_id', conversa.id)
-          .order('created_at', { ascending: true })
 
-        mensagensMap[conversa.id] = (mensagensData || []).map(m => ({
-          id: m.id,
-          conversa_id: m.conversa_id,
-          tipo: m.tipo,
-          conteudo: m.conteudo,
-          enviado_por_ia: m.enviado_por_ia || false,
-          enviado_por_user_id: m.enviado_por_user_id,
-          departamento_origem: m.departamento_origem,
-          lida: m.lida || false,
-          entregue: m.entregue || false,
-          metadata: m.metadata,
-          created_at: m.created_at
-        }))
-      }
+      conversasData.forEach((c: any) => {
+        if (c.mensagens && Array.isArray(c.mensagens)) {
+          mensagensMap[c.id] = c.mensagens.map((m: any) => ({
+            id: m.id,
+            conversa_id: m.conversa_id,
+            tipo: m.remetente === 'usuario' ? 'entrada' : 'saida',
+            conteudo: m.conteudo,
+            enviado_por_ia: m.remetente === 'assistente',
+            lida: m.lida || false,
+            created_at: m.enviada_em || m.created_at
+          }))
+        }
+      })
 
+      console.log('✅ Conversas formatadas:', conversasFormatadas.length)
+      console.log('✅ Mensagens mapeadas:', Object.keys(mensagensMap).length, 'conversas')
+      Object.entries(mensagensMap).forEach(([id, msgs]) => {
+        console.log(`  Conversa ${id}: ${msgs.length} mensagens`)
+        msgs.forEach(m => console.log(`    - ${m.tipo}: ${m.conteudo.substring(0, 50)}...`))
+      })
+
+      setConversas(conversasFormatadas)
       setMensagens(mensagensMap)
       setError(null)
     } catch (err: any) {
-      console.error('Erro ao buscar conversas:', err)
+      console.error('❌ Erro ao buscar conversas:', err)
       setError(err.message)
     } finally {
-      setLoading(false)
+      // Só desativa loading se foi carga inicial
+      if (isInitialLoad) {
+        setLoading(false)
+      }
     }
   }
 

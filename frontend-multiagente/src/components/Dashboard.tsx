@@ -34,6 +34,7 @@ interface DashboardProps {
   conversas: Conversa[]
   mensagens: Record<string, Mensagem[]>
   onLogout: () => void
+  onRefetch?: () => void
   userRole?: 'super_admin' | 'vendas' | 'assistencia-tecnica' | 'financeiro' | 'suporte-ti'
   userDepartamento?: string // slug do departamento do usuário
 }
@@ -42,6 +43,7 @@ export function Dashboard({
   conversas,
   mensagens,
   onLogout,
+  onRefetch,
   userRole = 'super_admin',
   userDepartamento
 }: DashboardProps) {
@@ -53,14 +55,18 @@ export function Dashboard({
   const [notificacoesAtivadas, setNotificacoesAtivadas] = useState(true)
 
   // Filtrar conversas baseado no departamento do usuário
+  // Super admin: vê conversas SEM departamento (null/undefined)
+  // Outros: vê conversas do SEU departamento
   const conversasFiltradas = userRole === 'super_admin'
-    ? conversas
-    : conversas.filter(c => c.departamento?.slug === userDepartamento)
+    ? conversas.filter(c => !c.departamento_slug)  // Super admin vê apenas conversas sem departamento
+    : conversas.filter(c => c.departamento_slug === userDepartamento)  // Departamentos vêem suas conversas
 
   // Hook de notificações
   const { notificar, tocarSom, solicitarPermissao } = useNotifications({
     enabled: notificacoesAtivadas,
-    conversas: conversasFiltradas
+    conversas: conversasFiltradas,
+    userDepartamento: userDepartamento,
+    userRole: userRole
   })
 
   // Solicitar permissão ao carregar
@@ -71,8 +77,86 @@ export function Dashboard({
   const conversa = conversas.find(c => c.id === conversaSelecionada)
   const mensagensConversa = conversaSelecionada ? mensagens[conversaSelecionada] || [] : []
 
-  const handleEnviarMensagem = (conteudo: string) => {
-    console.log('Enviando mensagem:', conteudo)
+  const handleEnviarMensagem = async (conteudo: string, arquivo?: File) => {
+    if (!conversa) return
+
+    try {
+      const API_URL = import.meta.env.VITE_API_URL || 'https://lcbaterias.automatexia.com.br'
+      const phone = conversa.lead.telefone.replace(/\D/g, '')
+
+      let midia_url: string | undefined
+
+      // Se tem arquivo, fazer upload primeiro
+      if (arquivo) {
+        const formData = new FormData()
+        formData.append('file', arquivo)
+        formData.append('phone', phone)
+
+        const uploadResponse = await fetch(`${API_URL}/api/upload`, {
+          method: 'POST',
+          body: formData
+        })
+
+        if (!uploadResponse.ok) {
+          throw new Error('Erro ao fazer upload do arquivo')
+        }
+
+        const uploadData = await uploadResponse.json()
+        midia_url = uploadData.url
+      }
+
+      // PAUSAR IA AUTOMATICAMENTE quando humano envia mensagem
+      // (só pausa se ainda não estiver pausada/desligada)
+      if (conversa.modo_ia === 'ligado' || conversa.modo_ia === 'ativo') {
+        await fetch(`${API_URL}/api/pausar-ia/${phone}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            user_id: usuario?.id || 'usuario-temp'
+          })
+        })
+      }
+
+      // Determinar departamento a ser enviado
+      const departamentoParaEnviar = userDepartamento || 'geral'
+      console.log('🔍 DEBUG Envio:', {
+        userDepartamento,
+        departamentoParaEnviar,
+        userRole,
+        usuarioCompleto: usuario
+      })
+
+      // Enviar mensagem
+      const response = await fetch(`${API_URL}/api/enviar-mensagem`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          phone,
+          message: conteudo,
+          user_id: usuario?.id || 'usuario-temp',
+          departamento: departamentoParaEnviar,  // Envia departamento do usuário
+          midia_url
+        })
+      })
+
+      if (!response.ok) {
+        throw new Error('Erro ao enviar mensagem')
+      }
+
+      console.log('✅ Mensagem enviada com sucesso e IA pausada')
+
+      // Atualizar conversas SEM recarregar a página
+      if (onRefetch) {
+        onRefetch()
+      }
+    } catch (error) {
+      console.error('❌ Erro ao enviar mensagem:', error)
+      alert('Erro ao enviar mensagem. Tente novamente.')
+    }
   }
 
   const menuItems = [
@@ -201,20 +285,6 @@ export function Dashboard({
           </div>
 
           <div className="flex items-center gap-2">
-            {/* Botão Testar Som */}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                console.log('Tocando som...')
-                tocarSom('nova_mensagem')
-              }}
-              className="gap-2"
-            >
-              <Volume2 className="h-4 w-4" />
-              <span className="hidden sm:inline">Testar Som</span>
-            </Button>
-
             {/* Notifications Toggle */}
             <Button
               variant={notificacoesAtivadas ? 'default' : 'outline'}
@@ -254,6 +324,7 @@ export function Dashboard({
                   conversa={conversa}
                   mensagens={mensagensConversa}
                   onEnviarMensagem={handleEnviarMensagem}
+                  onMensagensAtualizadas={onRefetch}
                 />
               </div>
 

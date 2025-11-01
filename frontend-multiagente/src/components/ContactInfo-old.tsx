@@ -3,6 +3,22 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { Textarea } from '@/components/ui/textarea'
 import type { Conversa } from '../types/index'
 import { useState } from 'react'
 
@@ -12,14 +28,17 @@ interface ContactInfoProps {
 }
 
 const DEPARTAMENTOS = [
-  { value: 'vendas', label: '💼 Vendas' },
-  { value: 'financeiro', label: '💰 Financeiro' },
-  { value: 'assistencia-tecnica', label: '🔧 Assistência Técnica' },
-  { value: 'suporte-ti', label: '💻 Suporte TI' },
+  { value: 'vendas', label: '💼 Vendas', icon: '💼' },
+  { value: 'financeiro', label: '💰 Financeiro', icon: '💰' },
+  { value: 'assistencia-tecnica', label: '🔧 Assistência Técnica', icon: '🔧' },
+  { value: 'suporte-ti', label: '💻 Suporte TI', icon: '💻' },
 ]
 
 export function ContactInfo({ conversa, onClose }: ContactInfoProps) {
   const [resolvendoConversa, setResolvendoConversa] = useState(false)
+  const [modalTransferirAberto, setModalTransferirAberto] = useState(false)
+  const [departamentoSelecionado, setDepartamentoSelecionado] = useState<string>('')
+  const [motivoTransferencia, setMotivoTransferencia] = useState('')
   const [transferindo, setTransferindo] = useState(false)
 
   if (!conversa) {
@@ -73,20 +92,10 @@ export function ContactInfo({ conversa, onClose }: ContactInfoProps) {
   }
 
   const handleTransferirConversa = async () => {
-    // Exibir opções de departamento
-    const departamentoTexto = DEPARTAMENTOS.map((d, i) => `${i + 1}. ${d.label}`).join('\n')
-    const escolha = prompt(`Selecione o departamento:\n\n${departamentoTexto}\n\nDigite o número:`)
-
-    if (!escolha) return
-
-    const index = parseInt(escolha) - 1
-    if (index < 0 || index >= DEPARTAMENTOS.length) {
-      alert('Departamento inválido')
+    if (!departamentoSelecionado) {
+      alert('Por favor, selecione um departamento')
       return
     }
-
-    const departamentoSelecionado = DEPARTAMENTOS[index].value
-    const motivo = prompt('Motivo da transferência (opcional):') || 'Transferência manual via dashboard'
 
     setTransferindo(true)
 
@@ -101,13 +110,14 @@ export function ContactInfo({ conversa, onClose }: ContactInfoProps) {
         body: JSON.stringify({
           phone,
           departamento: departamentoSelecionado,
-          motivo,
+          motivo: motivoTransferencia || 'Transferência manual via dashboard',
           user_id: 'current-user-id'
         })
       })
 
       if (response.ok) {
         alert('✅ Conversa transferida com sucesso! A IA foi pausada.')
+        setModalTransferirAberto(false)
         window.location.reload()
       } else {
         throw new Error('Erro ao transferir conversa')
@@ -252,7 +262,7 @@ export function ContactInfo({ conversa, onClose }: ContactInfoProps) {
                 <span className="text-sm">Modo Atual</span>
                 <Badge
                   className={
-                    conversa.modo_ia === 'ativo' || conversa.modo_ia === 'ligado'
+                    conversa.modo_ia === 'ativo'
                       ? 'bg-green-500'
                       : conversa.modo_ia === 'pausado'
                       ? 'bg-yellow-500'
@@ -292,20 +302,75 @@ export function ContactInfo({ conversa, onClose }: ContactInfoProps) {
             className="w-full bg-green-600 hover:bg-green-700 text-white"
           >
             <CheckCircle2 className="h-4 w-4 mr-2" />
-            {resolvendoConversa ? 'Resolvendo...' : 'Encerrar e Reativar IA'}
+            {resolvendoConversa ? 'Resolvendo...' : 'Marcar como Resolvido'}
           </Button>
         )}
 
         <Button
           variant="outline"
           className="w-full"
-          onClick={handleTransferirConversa}
-          disabled={transferindo}
+          onClick={() => setModalTransferirAberto(true)}
         >
           <Users className="h-4 w-4 mr-2" />
-          {transferindo ? 'Transferindo...' : 'Transferir Conversa'}
+          Transferir Conversa
         </Button>
       </div>
+
+      {/* Modal de Transferência */}
+      <Dialog open={modalTransferirAberto} onOpenChange={setModalTransferirAberto}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Transferir Conversa</DialogTitle>
+            <DialogDescription>
+              Selecione o departamento para onde deseja transferir esta conversa. A IA será pausada automaticamente.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Departamento</label>
+              <Select value={departamentoSelecionado} onValueChange={setDepartamentoSelecionado}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione um departamento" />
+                </SelectTrigger>
+                <SelectContent>
+                  {DEPARTAMENTOS.map((dept) => (
+                    <SelectItem key={dept.value} value={dept.value}>
+                      {dept.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Motivo (opcional)</label>
+              <Textarea
+                placeholder="Ex: Cliente solicita falar com departamento específico..."
+                value={motivoTransferencia}
+                onChange={(e) => setMotivoTransferencia(e.target.value)}
+                rows={3}
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setModalTransferirAberto(false)}
+              disabled={transferindo}
+            >
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleTransferirConversa}
+              disabled={transferindo || !departamentoSelecionado}
+            >
+              {transferindo ? 'Transferindo...' : 'Transferir'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

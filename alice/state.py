@@ -73,6 +73,15 @@ class ConversationState(TypedDict):
     prazo_pedido: Optional[str]
     prazo_sucata: Optional[str]
 
+    # Transferência para departamento
+    notificar_departamento: Optional[str]
+    transferido_para: Optional[str]
+    motivo_transferencia: Optional[str]
+
+    # Memória de longo prazo (dados históricos do cliente)
+    historico_interacoes: Optional[int]  # Número de conversas anteriores
+    ultimo_pedido: Optional[Dict[str, Any]]  # Dados do último pedido
+
     # Controle
     tentativas_erro: int
     ultima_mensagem_usuario: Optional[str]
@@ -99,6 +108,11 @@ def create_initial_state(phone: str) -> ConversationState:
         forma_pagamento=None,
         prazo_pedido=None,
         prazo_sucata=None,
+        notificar_departamento=None,
+        transferido_para=None,
+        motivo_transferencia=None,
+        historico_interacoes=None,
+        ultimo_pedido=None,
         tentativas_erro=0,
         ultima_mensagem_usuario=None
     )

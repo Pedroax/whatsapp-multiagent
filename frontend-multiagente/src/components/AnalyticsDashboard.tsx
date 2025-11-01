@@ -25,7 +25,7 @@ import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import * as XLSX from 'xlsx'
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://138.68.13.174'
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://lcbaterias.automatexia.com.br'
 
 interface MetricCardProps {
   title: string
@@ -314,10 +314,10 @@ export function AnalyticsDashboard() {
       body: [
         ['Receita Total', `R$ ${metrics?.total_revenue?.toLocaleString('pt-BR')}`, `${metrics?.revenue_change >= 0 ? '+' : ''}${metrics?.revenue_change}%`],
         ['Pedidos Fechados', metrics?.total_orders, `${metrics?.orders_change >= 0 ? '+' : ''}${metrics?.orders_change}%`],
-        ['Conversas Totais', metrics?.total_conversations, `${metrics?.conversations_change >= 0 ? '+' : ''}${metrics?.conversations_change}%`],
-        ['Taxa de Conversão', `${metrics?.conversion_rate?.toFixed(2)}%`, `${metrics?.conversion_growth >= 0 ? '+' : ''}${metrics?.conversion_growth}%`],
-        ['Ticket Médio', `R$ ${metrics?.avg_ticket?.toLocaleString('pt-BR')}`, `${metrics?.ticket_growth >= 0 ? '+' : ''}${metrics?.ticket_growth}%`],
-        ['Leads Pendentes', metrics?.pending_leads, `${metrics?.leads_growth >= 0 ? '+' : ''}${metrics?.leads_growth}%`],
+        ['Conversas Totais', metrics?.conversations, `${metrics?.conversations_change >= 0 ? '+' : ''}${metrics?.conversations_change}%`],
+        ['Taxa de Conversão', `${metrics?.conversion_rate?.toFixed(2)}%`, `${metrics?.conversion_rate_change >= 0 ? '+' : ''}${metrics?.conversion_rate_change}%`],
+        ['Ticket Médio', `R$ ${metrics?.avg_ticket?.toLocaleString('pt-BR')}`, `${metrics?.avg_ticket_change >= 0 ? '+' : ''}${metrics?.avg_ticket_change}%`],
+        ['Leads Pendentes', metrics?.pending_leads, `${metrics?.pending_leads_change >= 0 ? '+' : ''}${metrics?.pending_leads_change}%`],
       ]
     })
 
@@ -376,10 +376,10 @@ export function AnalyticsDashboard() {
       ['Métrica', 'Valor', 'Variação'],
       ['Receita Total', `R$ ${metrics?.total_revenue?.toLocaleString('pt-BR')}`, `${metrics?.revenue_change}%`],
       ['Pedidos Fechados', metrics?.total_orders, `${metrics?.orders_change}%`],
-      ['Conversas Totais', metrics?.total_conversations, `${metrics?.conversations_change}%`],
-      ['Taxa de Conversão', `${metrics?.conversion_rate?.toFixed(2)}%`, `${metrics?.conversion_growth}%`],
-      ['Ticket Médio', `R$ ${metrics?.avg_ticket?.toLocaleString('pt-BR')}`, `${metrics?.ticket_growth}%`],
-      ['Leads Pendentes', metrics?.pending_leads, `${metrics?.leads_growth}%`],
+      ['Conversas Totais', metrics?.conversations, `${metrics?.conversations_change}%`],
+      ['Taxa de Conversão', `${metrics?.conversion_rate?.toFixed(2)}%`, `${metrics?.conversion_rate_change}%`],
+      ['Ticket Médio', `R$ ${metrics?.avg_ticket?.toLocaleString('pt-BR')}`, `${metrics?.avg_ticket_change}%`],
+      ['Leads Pendentes', metrics?.pending_leads, `${metrics?.pending_leads_change}%`],
       [],
       ['FUNIL DE CONVERSÃO'],
       ['Etapa', 'Quantidade', 'Percentual'],
@@ -556,7 +556,7 @@ export function AnalyticsDashboard() {
           <MetricCard
             title="Receita Total (IA)"
             value={metrics.total_revenue}
-            change={metrics.revenue_growth}
+            change={metrics.revenue_change}
             changeLabel="vs período anterior"
             icon={DollarSign}
             color="bg-green-500"
@@ -565,23 +565,23 @@ export function AnalyticsDashboard() {
           <MetricCard
             title="Pedidos Fechados"
             value={metrics.total_orders}
-            change={metrics.orders_growth}
+            change={metrics.orders_change}
             changeLabel="vs período anterior"
             icon={ShoppingCart}
             color="bg-blue-500"
           />
           <MetricCard
             title="Conversas Totais"
-            value={metrics.total_conversations}
-            change={metrics.conversations_growth}
+            value={metrics.conversations}
+            change={metrics.conversations_change}
             changeLabel="vs período anterior"
             icon={MessageSquare}
             color="bg-purple-500"
           />
           <MetricCard
             title="Taxa de Conversão"
-            value={metrics.conversion_rate}
-            change={metrics.conversion_growth}
+            value={metrics.conversion_rate?.toFixed(1)}
+            change={metrics.conversion_rate_change}
             changeLabel="vs período anterior"
             icon={TrendingUp}
             color="bg-orange-500"
@@ -593,8 +593,8 @@ export function AnalyticsDashboard() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <MetricCard
             title="Ticket Médio"
-            value={metrics.avg_ticket}
-            change={metrics.ticket_growth}
+            value={metrics.avg_ticket?.toFixed(2)}
+            change={metrics.avg_ticket_change}
             changeLabel="vs período anterior"
             icon={DollarSign}
             color="bg-teal-500"
@@ -603,7 +603,7 @@ export function AnalyticsDashboard() {
           <MetricCard
             title="Negócios Fechados"
             value={metrics.closed_deals}
-            change={metrics.deals_growth}
+            change={metrics.closed_deals_change}
             changeLabel="vs período anterior"
             icon={CheckCircle}
             color="bg-green-600"
@@ -611,15 +611,15 @@ export function AnalyticsDashboard() {
           <MetricCard
             title="Leads Pendentes"
             value={metrics.pending_leads}
-            change={metrics.leads_growth}
+            change={metrics.pending_leads_change}
             changeLabel="vs período anterior"
             icon={XCircle}
             color="bg-red-500"
           />
           <MetricCard
             title="Tempo Resposta (IA)"
-            value={metrics.avg_response_time}
-            change={metrics.response_growth}
+            value={metrics.response_time}
+            change={metrics.response_time_change}
             changeLabel="vs período anterior"
             icon={Clock}
             color="bg-indigo-500"

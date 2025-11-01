@@ -163,6 +163,105 @@ class EvolutionAPI:
             logger.error(f"💥 Erro ao obter info: {str(e)}")
             return {"error": str(e)}
 
+    async def send_media(
+        self,
+        phone: str,
+        media_url: str,
+        media_type: str,
+        caption: str = "",
+        filename: str = "arquivo"
+    ) -> Dict[str, Any]:
+        """
+        Envia mídia (imagem, vídeo, áudio, documento)
+
+        Args:
+            phone: Número com DDI
+            media_url: URL da mídia
+            media_type: Tipo: 'image', 'video', 'audio', 'document'
+            caption: Legenda (opcional)
+            filename: Nome do arquivo (para documentos)
+
+        Returns:
+            Resposta da API
+        """
+        url = f"{self.base_url}/message/sendMedia/{self.instance}"
+
+        # Mapear mimetypes
+        mimetype_map = {
+            'image': 'image/png',
+            'video': 'video/mp4',
+            'audio': 'audio/ogg',
+            'document': 'application/pdf'
+        }
+
+        # Detectar mimetype pela extensão da URL
+        if '.jpg' in media_url or '.jpeg' in media_url:
+            mimetype = 'image/jpeg'
+        elif '.png' in media_url:
+            mimetype = 'image/png'
+        elif '.mp4' in media_url:
+            mimetype = 'video/mp4'
+        elif '.ogg' in media_url:
+            mimetype = 'audio/ogg'
+        elif '.mp3' in media_url:
+            mimetype = 'audio/mpeg'
+        elif '.pdf' in media_url:
+            mimetype = 'application/pdf'
+        else:
+            mimetype = mimetype_map.get(media_type, 'application/octet-stream')
+
+        payload = {
+            "number": phone,
+            "mediatype": media_type,
+            "mimetype": mimetype,
+            "media": media_url
+        }
+
+        if caption:
+            payload["caption"] = caption
+
+        if media_type == 'document':
+            payload["fileName"] = filename
+
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    url,
+                    headers=self.headers,
+                    json=payload,
+                    timeout=60.0
+                )
+
+                if response.status_code in [200, 201]:
+                    logger.success(f"✅ Mídia enviada para {phone} ({media_type})")
+                    return response.json()
+                else:
+                    logger.error(f"❌ Erro ao enviar mídia: {response.status_code} - {response.text}")
+                    return {
+                        "error": f"HTTP {response.status_code}",
+                        "details": response.text
+                    }
+
+        except Exception as e:
+            logger.error(f"💥 Erro ao enviar mídia: {str(e)}")
+            return {"error": str(e)}
+
+    async def send_image(self, phone: str, image_url: str, caption: str = "") -> Dict[str, Any]:
+        """Envia imagem"""
+        return await self.send_media(phone, image_url, "image", caption)
+
+    async def send_video(self, phone: str, video_url: str, caption: str = "") -> Dict[str, Any]:
+        """Envia vídeo"""
+        return await self.send_media(phone, video_url, "video", caption)
+
+    async def send_audio(self, phone: str, audio_url: str) -> Dict[str, Any]:
+        """Envia áudio"""
+        return await self.send_media(phone, audio_url, "audio")
+
+    async def send_document(self, phone: str, document_url: str, caption: str = "", filename: str = "documento.pdf") -> Dict[str, Any]:
+        """Envia documento"""
+        return await self.send_media(phone, document_url, "document", caption, filename)
+
     async def download_media(self, message_key_dict: Dict[str, Any], media_url: str = "") -> Optional[bytes]:
         """
         Baixa mídia do WhatsApp (áudio, imagem, documento)
