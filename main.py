@@ -67,6 +67,26 @@ debouncer: Optional[MessageDebouncer] = None
 media_processor: Optional[MediaProcessor] = None
 
 
+async def salvar_mensagem(conversa_id: str, role: str, content: str):
+    """Salva mensagem no banco de dados"""
+    try:
+        from supabase import create_client
+        from datetime import datetime
+
+        supabase = create_client(settings.supabase_url, settings.supabase_service_key)
+
+        supabase.table("mensagens").insert({
+            "conversa_id": conversa_id,
+            "role": role,
+            "content": content,
+            "enviada_em": datetime.now().isoformat()
+        }).execute()
+
+        logger.debug(f"💬 Mensagem salva: {role}")
+    except Exception as e:
+        logger.error(f"❌ Erro ao salvar mensagem: {e}")
+
+
 @app.on_event("startup")
 async def startup():
     """Inicializa componentes"""
@@ -350,6 +370,10 @@ async def process_message(phone: str, combined_message: str):
         # Salva nova sessão
         await session_manager.save_session(phone, new_state)
 
+        # Cria ou recupera conversa no banco de dados
+        conversa_id = await intelligent_controller._get_or_create_conversa(phone, new_state, push_name="Cliente")
+        logger.debug(f"💾 Conversa ID: {conversa_id}")
+
         # ====================================================================
         # 🎯 DECISÃO INTELIGENTE: Enviar direto, aguardar aprovação ou bloquear
         # ====================================================================
@@ -362,6 +386,9 @@ async def process_message(phone: str, combined_message: str):
 
         logger.info(f"🎯 Decisão: {decisao}")
 
+        # Salvar mensagem do usuário
+        await salvar_mensagem(conversa_id, "usuario", combined_message)
+
         # CASO 1: Enviar direto (modo ligado + alta confiança)
         if decisao == "enviar_direto":
             await send_with_typing_simulation(
@@ -371,6 +398,9 @@ async def process_message(phone: str, combined_message: str):
                 use_smart_split=True
             )
             logger.success(f"✅ Mensagem enviada DIRETAMENTE (alta confiança)")
+
+            # Salvar resposta da IA
+            await salvar_mensagem(conversa_id, "assistente", response)
 
         # CASO 2: Aguardar aprovação (modo atenção OU baixa confiança)
         elif decisao == "aguardar_aprovacao":
