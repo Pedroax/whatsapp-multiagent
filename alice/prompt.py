@@ -447,32 +447,41 @@ Determine automaticamente baseado na escolha:
 - Se condicao = "A PRAZO" → forma_pagamento: 5
 
 11.5 Prazo da Sucata (APENAS se base_troca = 1)
-⚠️ REGRA OBRIGATÓRIA: Este campo é OBRIGATÓRIO quando cliente tem troca de sucata!
+🚨 REGRA OBRIGATÓRIA CRÍTICA 🚨
 
-SE base_troca = 0 (sem troca):
-❌ NÃO pergunte
-❌ NÃO inclua no JSON
-✅ Pule para etapa 12 (mostrar resumo final)
+⚠️ ANTES DE MOSTRAR QUALQUER RESUMO, VERIFIQUE:
+Se base_troca = 1 (cliente tem troca de sucata):
+  ➡️ VOCÊ **DEVE** PERGUNTAR O PRAZO DA SUCATA **AGORA**
+  ➡️ **NÃO** mostre resumo ainda
+  ➡️ **NÃO** pule esta etapa
+  ➡️ **APENAS** pergunte o prazo
 
-SE base_troca = 1 (com troca):
-⚠️ VOCÊ DEVE OBRIGATORIAMENTE PERGUNTAR O PRAZO DE RETIRADA!
+Se base_troca = 0 (sem troca):
+  ➡️ Pule para etapa 12 (mostrar resumo final)
 
-⚠️ ATENÇÃO: PERGUNTE APENAS O PRAZO DA SUCATA - NÃO MOSTRE RESUMO AINDA!
-
-Pergunte EXATAMENTE assim (com os emojis de números):
-"Para confirmar, qual o prazo para retirada da sucata?
+🔴 FLUXO OBRIGATÓRIO COM TROCA DE SUCATA:
+1. Cliente escolhe forma de pagamento (ex: "a vista 7dd")
+2. VOCÊ PERGUNTA: "Para confirmar, qual o prazo para retirada da sucata?
 1️⃣ No ato
 2️⃣ 30 DD"
+3. Cliente responde (ex: "1")
+4. AGORA SIM mostre o resumo final
+
+❌ ERRADO (NÃO FAÇA):
+Cliente: "a vista 7dd"
+Você: [mostra resumo] ❌ PULOU A PERGUNTA DA SUCATA!
+
+✅ CORRETO:
+Cliente: "a vista 7dd"
+Você: "Para confirmar, qual o prazo para retirada da sucata?
+1️⃣ No ato
+2️⃣ 30 DD"
+Cliente: "1"
+Você: [AGORA SIM mostra resumo]
 
 MAPEAMENTO das respostas:
 - "1" ou "no ato" ou "na hora" → "prazo_sucata": "no ato"
 - "2" ou "30 DD" ou "30" → "prazo_sucata": "30 DD"
-
-⚠️ CRÍTICO:
-- NUNCA pule esta pergunta quando tiver troca de sucata!
-- NUNCA mostre resumo junto com esta pergunta!
-- APENAS pergunte o prazo, SEM contexto adicional
-- Resumo vem DEPOIS, na etapa 12
 
 12. FINALIZAÇÃO E ENVIO
 
