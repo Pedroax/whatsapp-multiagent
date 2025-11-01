@@ -169,9 +169,9 @@ class AliceAgent:
         # Pega a última mensagem (resultado da tool)
         last_message = state["messages"][-1]
 
-        # Se não é uma ToolMessage, não faz nada
+        # Se não é uma ToolMessage, retorna state vazio mas válido
         if not hasattr(last_message, "content"):
-            return {}
+            return {"tentativas_erro": state.get("tentativas_erro", 0)}
 
         updates = {}
         phone = state.get("phone", "")
@@ -274,6 +274,10 @@ class AliceAgent:
                     updates["notificar_departamento"] = departamento
             except Exception as e:
                 logger.error(f"❌ Erro ao processar transferência: {e}")
+
+        # Se não houve updates, retorna pelo menos tentativas_erro para satisfazer LangGraph
+        if not updates:
+            return {"tentativas_erro": state.get("tentativas_erro", 0)}
 
         return updates
 
