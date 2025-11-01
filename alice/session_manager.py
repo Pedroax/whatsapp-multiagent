@@ -144,6 +144,8 @@ class SessionManager:
                 msg_dict["name"] = msg.name
             if hasattr(msg, "tool_calls"):
                 msg_dict["tool_calls"] = msg.tool_calls
+            if hasattr(msg, "tool_call_id"):
+                msg_dict["tool_call_id"] = msg.tool_call_id
             messages_serialized.append(msg_dict)
 
         # Cria cópia do state para serialização
@@ -182,7 +184,8 @@ class SessionManager:
             elif msg_type == "SystemMessage":
                 messages.append(SystemMessage(content=content))
             elif msg_type == "ToolMessage":
-                msg = ToolMessage(content=content, tool_call_id="")
+                tool_call_id = msg_dict.get("tool_call_id", "")
+                msg = ToolMessage(content=content, tool_call_id=tool_call_id)
                 if "name" in msg_dict:
                     msg.name = msg_dict["name"]
                 messages.append(msg)
