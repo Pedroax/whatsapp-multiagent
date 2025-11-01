@@ -634,6 +634,61 @@ async def enviar_mensagem(request: Request):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.post("/api/transferir-conversa")
+async def transferir_conversa(request: Request):
+    """
+    Transfere conversa para um departamento e pausa a IA
+
+    Body:
+    {
+        "phone": "5561999999999",
+        "departamento": "financeiro",
+        "motivo": "Cliente solicita falar com financeiro",
+        "user_id": "user123"
+    }
+    """
+    try:
+        from supabase import create_client
+        from config import settings
+        from datetime import datetime
+
+        payload = await request.json()
+        phone = payload.get("phone")
+        departamento = payload.get("departamento")
+        motivo = payload.get("motivo", "")
+        user_id = payload.get("user_id", "sistema")
+
+        if not phone or not departamento:
+            raise HTTPException(status_code=400, detail="Phone and departamento are required")
+
+        supabase = create_client(settings.supabase_url, settings.supabase_service_key)
+
+        # Atualizar conversa: pausar IA e atribuir departamento
+        result = supabase.table("conversas").update({
+            "modo_ia": "desligado",  # PAUSAR IA
+            "departamento_slug": departamento,
+            "status": "aberta",
+            "transferido_em": datetime.utcnow().isoformat(),
+            "transferido_por": user_id,
+            "motivo_transferencia": motivo,
+            "notificado": False,
+            "updated_at": datetime.utcnow().isoformat()
+        }).eq("phone", phone).execute()
+
+        logger.success(f"✅ Conversa {phone} transferida para {departamento}")
+
+        return {
+            "success": True,
+            "message": f"Conversa transferida para {departamento}",
+            "phone": phone,
+            "departamento": departamento
+        }
+
+    except Exception as e:
+        logger.error(f"❌ Erro ao transferir conversa: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.post("/api/resolver-conversa/{phone}")
 async def resolver_conversa(phone: str, request: Request):
     """
