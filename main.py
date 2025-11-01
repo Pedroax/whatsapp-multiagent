@@ -610,23 +610,19 @@ async def enviar_mensagem(request: Request):
         conversa_result = supabase.table("conversas")\
             .select("id")\
             .eq("phone", phone)\
-            .single()\
             .execute()
 
-        if conversa_result.data:
-            conversa_id = conversa_result.data["id"]
+        if conversa_result.data and len(conversa_result.data) > 0:
+            conversa_id = conversa_result.data[0]["id"]
 
-            # Criar mensagem
+            # Criar mensagem (salvar com prefixo formatado)
             supabase.table("mensagens").insert({
                 "conversa_id": conversa_id,
-                "phone": phone,
-                "tipo": "saida",
-                "conteudo": message,
-                "enviado_por_ia": False,
-                "enviado_por_user_id": user_id,
-                "departamento_origem": departamento,
+                "remetente": "assistente",
+                "conteudo": mensagem_formatada,  # Mensagem COM prefixo do departamento
+                "tipo_midia": "text",
                 "lida": True,
-                "created_at": datetime.utcnow().isoformat()
+                "enviada_em": datetime.utcnow().isoformat()
             }).execute()
 
         logger.success(f"✅ Mensagem enviada de {departamento} para {phone}")
