@@ -887,7 +887,9 @@ async def enviar_pedido(pedido_json: Dict[str, Any]) -> Dict[str, Any]:
         logger.error(f"⏱️ Timeout ao enviar pedido")
         return {
             "sucesso": False,
-            "erro": "Timeout na conexão com a API (30s)"
+            "erro": "Timeout na conexão com a API (30s)",
+            "transferir_para_vendas": True,
+            "mensagem_cliente": "Vou transferir você para nossa equipe de vendas para finalizar seu pedido."
         }
     except Exception as e:
         logger.error(f"💥 Erro ao enviar pedido: {str(e)}")
@@ -895,7 +897,9 @@ async def enviar_pedido(pedido_json: Dict[str, Any]) -> Dict[str, Any]:
         traceback.print_exc()
         return {
             "sucesso": False,
-            "erro": f"Erro de comunicação: {str(e)}"
+            "erro": f"Erro de comunicação: {str(e)}",
+            "transferir_para_vendas": True,
+            "mensagem_cliente": "Vou transferir você para nossa equipe de vendas para finalizar seu pedido."
         }
 
 
