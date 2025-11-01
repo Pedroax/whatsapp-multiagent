@@ -730,6 +730,43 @@ async def remove_lead_pending(phone: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/api/conversas")
+async def buscar_conversas():
+    """Busca todas as conversas com suas mensagens"""
+    try:
+        from supabase import create_client
+
+        supabase = create_client(settings.supabase_url, settings.supabase_service_key)
+
+        conversas_result = supabase.table("conversas").select("*").order("updated_at", desc=True).execute()
+        conversas_com_mensagens = []
+
+        for conversa in conversas_result.data:
+            mensagens_result = supabase.table("mensagens").select("*").eq("conversa_id", conversa["id"]).order("enviada_em", desc=False).execute()
+            conversas_com_mensagens.append({**conversa, "mensagens": mensagens_result.data})
+
+        return {"conversas": conversas_com_mensagens}
+    except Exception as e:
+        logger.error(f"Erro ao buscar conversas: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/mensagens")
+async def buscar_mensagens():
+    """Busca todas as mensagens"""
+    try:
+        from supabase import create_client
+
+        supabase = create_client(settings.supabase_url, settings.supabase_service_key)
+
+        result = supabase.table("mensagens").select("*").order("enviada_em", desc=True).execute()
+
+        return {"mensagens": result.data}
+    except Exception as e:
+        logger.error(f"Erro ao buscar mensagens: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # ============================================================================
 # EXECUÇÃO
 # ============================================================================
