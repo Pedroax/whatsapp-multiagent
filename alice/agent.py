@@ -83,16 +83,9 @@ class AliceAgent:
         if context_info:
             messages.append(SystemMessage(content=f"CONTEXTO ATUAL:\n{context_info}"))
 
-        # Adiciona histórico de mensagens (filtra ToolMessage para evitar erros)
-        from langchain_core.messages import ToolMessage
-        filtered_messages = []
-        for msg in state["messages"]:
-            # Pula ToolMessages que podem causar erro de tool_call_id
-            if isinstance(msg, ToolMessage):
-                continue
-            filtered_messages.append(msg)
-
-        messages.extend(filtered_messages)
+        # Adiciona histórico de mensagens (apenas últimas 10 para evitar erros de tool_call_id)
+        recent_messages = state["messages"][-10:] if len(state["messages"]) > 10 else state["messages"]
+        messages.extend(recent_messages)
 
         # Chama LLM
         logger.info(f"🤖 Alice processando mensagem (estado: {state['current_state']})")
