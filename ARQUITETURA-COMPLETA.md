@@ -1013,6 +1013,8 @@ git diff 604bd53 main.py
 
 **Servidor:** `root@138.68.13.174`
 
+#### **Deploy Rápido (Código já no GitHub)**
+
 ```bash
 # 1. Commit local
 git add .
@@ -1029,6 +1031,489 @@ ssh root@138.68.13.174 "journalctl -u alice-backend -f"
 
 # 5. Ver status
 ssh root@138.68.13.174 "systemctl status alice-backend"
+```
+
+---
+
+#### **🚀 Setup Completo na VPS (Do Zero)**
+
+**Use este guia se precisar subir o sistema em uma nova VPS.**
+
+##### **1. Preparar VPS (Ubuntu 20.04+)**
+
+```bash
+# Conectar na VPS
+ssh root@138.68.13.174
+
+# Atualizar sistema
+apt update && apt upgrade -y
+
+# Instalar dependências
+apt install -y python3 python3-pip python3-venv git nginx certbot python3-certbot-nginx
+
+# Instalar Node.js (para frontend)
+curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
+apt install -y nodejs
+```
+
+---
+
+##### **2. Clonar Repositório**
+
+```bash
+# Ir para diretório root
+cd /root
+
+# Clonar repositório
+git clone https://github.com/Pedroax/whatsapp-multiagent.git alice-lc
+
+# Entrar no diretório
+cd alice-lc
+```
+
+---
+
+##### **3. Configurar Backend**
+
+```bash
+# Criar virtual environment
+python3 -m venv venv
+
+# Ativar venv
+source venv/bin/activate
+
+# Instalar dependências
+pip install -r requirements.txt
+
+# Criar arquivo .env
+nano .env
+```
+
+**Conteúdo do `.env`:**
+```bash
+# OpenAI
+OPENAI_API_KEY=sk-proj-...
+
+# Supabase
+SUPABASE_URL=https://xnehwhilbdhjcnzrssvt.supabase.co
+SUPABASE_KEY=eyJhbGc...
+
+# Evolution API
+EVOLUTION_API_URL=https://evolutionv2.dev.automatexia.com.br
+EVOLUTION_API_KEY=434E2E3F8BEE-4722-B8F4-EA61880FFE53
+EVOLUTION_INSTANCE=lc
+
+# API Externa LC Baterias
+API_BASE_URL=https://lcbaterias.automatexia.com.br/api-rest/v1
+API_SECRET_KEY=sua_chave_secreta_aqui
+
+# Outras configurações
+DEBUG=False
+```
+
+**Salvar:** `Ctrl+O`, `Enter`, `Ctrl+X`
+
+---
+
+##### **4. Configurar Systemd Service**
+
+```bash
+# Criar arquivo de serviço
+nano /etc/systemd/system/alice-backend.service
+```
+
+**Conteúdo:**
+```ini
+[Unit]
+Description=Alice LC Backend WhatsApp
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/alice-lc
+Environment="PATH=/root/alice-lc/venv/bin"
+ExecStart=/root/alice-lc/venv/bin/python3 main.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+```
+
+**Salvar:** `Ctrl+O`, `Enter`, `Ctrl+X`
+
+```bash
+# Recarregar systemd
+systemctl daemon-reload
+
+# Habilitar serviço (inicia no boot)
+systemctl enable alice-backend
+
+# Iniciar serviço
+systemctl start alice-backend
+
+# Verificar status
+systemctl status alice-backend
+
+# Ver logs
+journalctl -u alice-backend -f
+```
+
+---
+
+##### **5. Configurar Frontend**
+
+```bash
+# Entrar no diretório do frontend
+cd /root/alice-lc/frontend-multiagente
+
+# Instalar dependências
+npm install
+
+# Criar arquivo .env para build
+nano .env.production
+```
+
+**Conteúdo do `.env.production`:**
+```bash
+VITE_API_URL=https://lcbaterias.automatexia.com.br
+```
+
+**Salvar:** `Ctrl+O`, `Enter`, `Ctrl+X`
+
+```bash
+# Build do frontend
+npm run build
+
+# Copiar build para pasta do Nginx
+rm -rf /var/www/html/*
+cp -r dist/* /var/www/html/
+```
+
+---
+
+##### **6. Configurar Nginx**
+
+```bash
+# Editar configuração do Nginx
+nano /etc/nginx/sites-available/default
+```
+
+**Conteúdo completo:**
+```nginx
+server {
+    listen 80;
+    server_name lcbaterias.automatexia.com.br;
+
+    # Frontend (React)
+    location / {
+        root /var/www/html;
+        index index.html;
+        try_files $uri $uri/ /index.html;
+    }
+
+    # Backend API (FastAPI)
+    location /api/ {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+    }
+
+    # Webhook (FastAPI)
+    location /webhook/ {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+
+        # Timeout maior para webhook
+        proxy_read_timeout 300s;
+        proxy_connect_timeout 300s;
+    }
+}
+```
+
+**Salvar:** `Ctrl+O`, `Enter`, `Ctrl+X`
+
+```bash
+# Testar configuração
+nginx -t
+
+# Recarregar Nginx
+systemctl reload nginx
+```
+
+---
+
+##### **7. Configurar SSL (HTTPS)**
+
+```bash
+# Obter certificado SSL via Let's Encrypt
+certbot --nginx -d lcbaterias.automatexia.com.br
+
+# Responder as perguntas:
+# - Email: seu@email.com
+# - Termos: Yes
+# - Redirect HTTP para HTTPS: Yes (opção 2)
+
+# Certificado renova automaticamente, mas pode testar:
+certbot renew --dry-run
+```
+
+---
+
+##### **8. Configurar DNS**
+
+**No provedor de domínio (ex: Cloudflare, GoDaddy):**
+
+```
+Tipo: A
+Nome: lcbaterias (ou @)
+Valor: 138.68.13.174
+TTL: Automático
+```
+
+**Aguarde propagação DNS (5-30 minutos)**
+
+---
+
+##### **9. Configurar Webhook no Evolution API**
+
+```bash
+# Via API do Evolution
+curl -X POST https://evolutionv2.dev.automatexia.com.br/webhook/set/lc \
+  -H "apikey: 434E2E3F8BEE-4722-B8F4-EA61880FFE53" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "enabled": true,
+    "url": "https://lcbaterias.automatexia.com.br/webhook/whatsapp",
+    "events": [
+      "messages.upsert"
+    ]
+  }'
+```
+
+**Ou via interface web do Evolution:**
+- Acessar: https://evolutionv2.dev.automatexia.com.br
+- Login com API Key
+- Instância: `lc`
+- Webhook URL: `https://lcbaterias.automatexia.com.br/webhook/whatsapp`
+- Events: `messages.upsert`
+
+---
+
+##### **10. Verificar se Tudo Funciona**
+
+```bash
+# 1. Backend rodando?
+systemctl status alice-backend
+
+# 2. Logs sem erro?
+journalctl -u alice-backend -n 50
+
+# 3. Nginx rodando?
+systemctl status nginx
+
+# 4. Porta 8000 aberta?
+netstat -tlnp | grep 8000
+
+# 5. Teste no navegador
+curl http://localhost:8000/api/conversas
+# Deve retornar JSON com conversas
+
+# 6. Teste frontend
+# Acessar: https://lcbaterias.automatexia.com.br
+# Deve carregar interface React
+
+# 7. Teste webhook (enviar mensagem no WhatsApp)
+# Ver logs: journalctl -u alice-backend -f
+# Deve aparecer: "📥 Webhook recebido"
+```
+
+---
+
+##### **11. Firewall (Opcional mas Recomendado)**
+
+```bash
+# Instalar UFW
+apt install -y ufw
+
+# Permitir SSH (IMPORTANTE! Senão perde acesso)
+ufw allow 22/tcp
+
+# Permitir HTTP e HTTPS
+ufw allow 80/tcp
+ufw allow 443/tcp
+
+# Habilitar firewall
+ufw enable
+
+# Ver status
+ufw status
+```
+
+---
+
+##### **12. Manutenção e Comandos Úteis**
+
+```bash
+# ====== BACKEND ======
+
+# Ver logs em tempo real
+journalctl -u alice-backend -f
+
+# Ver últimas 100 linhas
+journalctl -u alice-backend -n 100
+
+# Restart backend
+systemctl restart alice-backend
+
+# Stop backend
+systemctl stop alice-backend
+
+# Ver status
+systemctl status alice-backend
+
+
+# ====== FRONTEND ======
+
+# Rebuild frontend
+cd /root/alice-lc/frontend-multiagente
+npm run build
+rm -rf /var/www/html/*
+cp -r dist/* /var/www/html/
+
+
+# ====== NGINX ======
+
+# Testar config
+nginx -t
+
+# Reload (sem parar)
+systemctl reload nginx
+
+# Restart
+systemctl restart nginx
+
+# Ver logs
+tail -f /var/log/nginx/error.log
+tail -f /var/log/nginx/access.log
+
+
+# ====== GIT ======
+
+# Atualizar código
+cd /root/alice-lc
+git pull
+systemctl restart alice-backend
+
+# Ver commits recentes
+git log --oneline -10
+
+# Ver mudanças
+git status
+git diff
+
+
+# ====== SISTEMA ======
+
+# Uso de memória
+free -h
+
+# Uso de disco
+df -h
+
+# Processos Python rodando
+ps aux | grep python
+
+# Processos usando porta 8000
+lsof -i :8000
+
+
+# ====== BANCO DE DADOS ======
+
+# Ver conversas ativas
+# (Conectar via Supabase Dashboard ou psql)
+
+# Via API
+curl http://localhost:8000/api/conversas | jq
+```
+
+---
+
+##### **13. Troubleshooting VPS**
+
+**Backend não inicia:**
+```bash
+# Ver erro detalhado
+journalctl -u alice-backend -n 100
+
+# Testar manualmente
+cd /root/alice-lc
+source venv/bin/activate
+python main.py
+# Ver erro que aparece
+```
+
+**Porta 8000 já em uso:**
+```bash
+# Ver o que está usando
+lsof -i :8000
+
+# Matar processo
+kill -9 PID_AQUI
+
+# Restart serviço
+systemctl restart alice-backend
+```
+
+**Frontend não carrega:**
+```bash
+# Ver logs do Nginx
+tail -f /var/log/nginx/error.log
+
+# Verificar arquivos
+ls -la /var/www/html/
+# Deve ter index.html, assets/, etc
+```
+
+**SSL não funciona:**
+```bash
+# Renovar certificado
+certbot renew
+
+# Reconfigurar
+certbot --nginx -d lcbaterias.automatexia.com.br
+```
+
+**Webhook não recebe mensagens:**
+```bash
+# Ver logs
+journalctl -u alice-backend -f
+
+# Enviar mensagem no WhatsApp
+# Se não aparecer "📥 Webhook recebido", problema no Evolution
+
+# Reconfigurar webhook
+curl -X POST https://evolutionv2.dev.automatexia.com.br/webhook/set/lc \
+  -H "apikey: 434E2E3F8BEE-4722-B8F4-EA61880FFE53" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "enabled": true,
+    "url": "https://lcbaterias.automatexia.com.br/webhook/whatsapp"
+  }'
 ```
 
 ### **Estrutura no Servidor**
