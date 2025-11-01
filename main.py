@@ -67,7 +67,7 @@ debouncer: Optional[MessageDebouncer] = None
 media_processor: Optional[MediaProcessor] = None
 
 
-async def salvar_mensagem(conversa_id: str, role: str, content: str):
+async def salvar_mensagem(conversa_id: str, remetente: str, conteudo: str):
     """Salva mensagem no banco de dados"""
     try:
         from supabase import create_client
@@ -77,12 +77,14 @@ async def salvar_mensagem(conversa_id: str, role: str, content: str):
 
         supabase.table("mensagens").insert({
             "conversa_id": conversa_id,
-            "role": role,
-            "content": content,
+            "empresa_id": "emp1",
+            "remetente": remetente,
+            "conteudo": conteudo,
+            "tipo_midia": "text",
             "enviada_em": datetime.now().isoformat()
         }).execute()
 
-        logger.debug(f"💬 Mensagem salva: {role}")
+        logger.debug(f"💬 Mensagem salva: {remetente}")
     except Exception as e:
         logger.error(f"❌ Erro ao salvar mensagem: {e}")
 
