@@ -67,22 +67,31 @@ debouncer: Optional[MessageDebouncer] = None
 media_processor: Optional[MediaProcessor] = None
 
 
-async def salvar_mensagem(conversa_id: str, role: str, content: str):
-    """Salva mensagem no banco de dados"""
+async def salvar_mensagem(conversa_id: str, remetente: str, conteudo: str, tipo_midia: str = "text"):
+    """
+    Salva mensagem no histórico
+
+    Args:
+        conversa_id: ID da conversa
+        remetente: 'usuario' ou 'assistente'
+        conteudo: Conteúdo da mensagem
+        tipo_midia: Tipo de mídia (text, audio, image, document)
+    """
     try:
         from supabase import create_client
-        from datetime import datetime
+        from config import settings
 
         supabase = create_client(settings.supabase_url, settings.supabase_service_key)
 
         supabase.table("mensagens").insert({
             "conversa_id": conversa_id,
-            "role": role,
-            "content": content,
-            "enviada_em": datetime.now().isoformat()
+            "remetente": remetente,
+            "conteudo": conteudo,
+            "tipo_midia": tipo_midia
         }).execute()
 
-        logger.debug(f"💬 Mensagem salva: {role}")
+        logger.debug(f"💬 Mensagem salva: {remetente} - {conteudo[:50]}...")
+
     except Exception as e:
         logger.error(f"❌ Erro ao salvar mensagem: {e}")
 
