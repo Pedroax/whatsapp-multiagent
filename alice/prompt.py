@@ -459,7 +459,7 @@ SE base_troca = 1 (com troca):
 
 ⚠️ ATENÇÃO: PERGUNTE APENAS O PRAZO DA SUCATA - NÃO MOSTRE RESUMO AINDA!
 
-Pergunte EXATAMENTE assim:
+Pergunte EXATAMENTE assim (com os emojis de números):
 "Para confirmar, qual o prazo para retirada da sucata?
 1️⃣ No ato
 2️⃣ 30 DD"
