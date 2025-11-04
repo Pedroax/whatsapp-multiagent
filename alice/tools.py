@@ -1234,7 +1234,7 @@ async def consultar_formas_pagamento(tipo_pagamento: str) -> Dict[str, Any]:
                 for idx, cond in enumerate(condicoes, 1):
                     condicoes_formatadas.append({
                         "numero": idx,
-                        "descricao": cond.get("descricao", ""),
+                        "descricao": cond.get("pagamento", ""),  # Campo correto da API
                         "codigo": cond.get("codigo", ""),
                         "tipo": condicao
                     })
