@@ -51,10 +51,20 @@ class ConsultarPrazosInput(BaseModel):
     valor_total: float = Field(description="Valor total do pedido em reais")
 
 
-class ConsultarCondicoesPagamentoInput(BaseModel):
-    """Schema para consultar condições de pagamento (À VISTA ou A PRAZO)"""
+class ConsultarFormasPagamentoInput(BaseModel):
+    """Schema para consultar formas de pagamento (Dinheiro, PIX, Cartão, Boleto)"""
     tipo_pagamento: str = Field(
         description="Tipo de pagamento: 'A VISTA' ou 'A PRAZO' (ou '1' para à vista, '2' para a prazo)"
+    )
+
+
+class ConsultarPrazosPorFormaInput(BaseModel):
+    """Schema para consultar prazos baseado na forma de pagamento escolhida"""
+    codigo_pagamento: int = Field(
+        description="Código da forma de pagamento escolhida (ex: 1=Dinheiro, 4=PIX, 5=Boleto)"
+    )
+    quantidade_total: int = Field(
+        description="Quantidade total de baterias do pedido"
     )
 
 
@@ -1139,26 +1149,28 @@ async def consultar_prazos_pagamento(quantidade_total: int, valor_total: float) 
         }
 
 
-@tool(args_schema=ConsultarCondicoesPagamentoInput)
-async def consultar_condicoes_pagamento(tipo_pagamento: str) -> Dict[str, Any]:
+@tool(args_schema=ConsultarFormasPagamentoInput)
+async def consultar_formas_pagamento(tipo_pagamento: str) -> Dict[str, Any]:
     """
-    Consulta as condições de pagamento disponíveis (À VISTA ou A PRAZO) na API Fausoft.
+    Consulta as FORMAS de pagamento disponíveis (Dinheiro, PIX, Cartão, Boleto)
+    para um tipo específico (À VISTA ou A PRAZO) na API Fausoft.
 
-    Esta tool deve ser chamada APÓS o cliente confirmar a cotação e ANTES de mostrar
-    as opções específicas de prazo.
+    IMPORTANTE: Esta é a PRIMEIRA consulta de pagamento. Depois desta, você deve
+    chamar consultar_prazos_por_forma com o código da forma escolhida.
 
     Args:
         tipo_pagamento: "A VISTA", "1", "à vista" OU "A PRAZO", "2", "a prazo"
 
     Returns:
-        Dict com lista de condições de pagamento disponíveis
+        Dict com lista de formas de pagamento (cada uma com código, descricao)
 
     Exemplo de uso no fluxo:
     1. Cliente confirma cotação: "sim"
     2. IA pergunta: "É à vista ou a prazo? 1️⃣ À vista / 2️⃣ A prazo"
     3. Cliente: "1" ou "à vista"
-    4. IA chama esta tool: consultar_condicoes_pagamento("A VISTA")
-    5. IA mostra opções retornadas
+    4. IA chama: consultar_formas_pagamento("A VISTA")
+    5. API retorna: [{"codigo": 4, "descricao": "PIX"}, {"codigo": 1, "descricao": "Dinheiro"}]
+    6. IA mostra opções e aguarda escolha
     """
     try:
         # Normalizar entrada
@@ -1227,13 +1239,13 @@ async def consultar_condicoes_pagamento(tipo_pagamento: str) -> Dict[str, Any]:
                         "tipo": condicao
                     })
 
-                logger.success(f"✅ Encontradas {len(condicoes_formatadas)} condições para {condicao}")
+                logger.success(f"✅ Encontradas {len(condicoes_formatadas)} formas de pagamento para {condicao}")
 
                 return {
                     "sucesso": True,
                     "tipo_pagamento": condicao,
-                    "condicoes": condicoes_formatadas,
-                    "total_condicoes": len(condicoes_formatadas)
+                    "formas": condicoes_formatadas,  # Renomeado de "condicoes" para "formas"
+                    "total_formas": len(condicoes_formatadas)
                 }
             else:
                 error_msg = data.get("message", "Erro desconhecido")
@@ -1265,6 +1277,121 @@ async def consultar_condicoes_pagamento(tipo_pagamento: str) -> Dict[str, Any]:
         }
 
 
+@tool(args_schema=ConsultarPrazosPorFormaInput)
+async def consultar_prazos_por_forma(codigo_pagamento: int, quantidade_total: int) -> Dict[str, Any]:
+    """
+    Consulta os PRAZOS disponíveis baseado na FORMA de pagamento escolhida
+    e quantidade de baterias na API Fausoft.
+
+    IMPORTANTE: Esta é a SEGUNDA consulta de pagamento, após o cliente escolher
+    a forma (PIX, Dinheiro, Boleto, etc).
+
+    Args:
+        codigo_pagamento: Código da forma escolhida (ex: 1=Dinheiro, 4=PIX, 5=Boleto)
+        quantidade_total: Total de baterias do pedido
+
+    Returns:
+        Dict com lista de prazos disponíveis (cada prazo com codigo, descricao)
+
+    Exemplo de uso no fluxo:
+    1. Cliente escolheu forma: "1" (PIX, código 4)
+    2. IA chama: consultar_prazos_por_forma(codigo_pagamento=4, quantidade_total=10)
+    3. API retorna: [{"codigo": "11", "prazo": "7 DD"}, {"codigo": "12", "prazo": "14 DD"}]
+    4. IA mostra opções e aguarda escolha
+    """
+    try:
+        logger.info(f"🔍 Consultando prazos: forma={codigo_pagamento}, qtd={quantidade_total}")
+
+        # Gerar autenticação
+        auth = gerar_autenticacao()
+
+        # Montar payload
+        payload = {
+            "timestamp": auth["timestamp"],
+            "token": auth["token"],
+            "action": "select",
+            "instance": "prazos",
+            "dataset": {
+                "codigo_pagamento": codigo_pagamento,
+                "quantidade_total": quantidade_total
+            }
+        }
+
+        logger.debug(f"📤 Payload: {payload}")
+
+        # Fazer requisição
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                "https://www.grupolc.app.br/api/",
+                json=payload,
+                timeout=15.0
+            )
+
+        logger.debug(f"📥 Status Code: {response.status_code}")
+
+        # Processar resposta
+        if response.status_code == 200:
+            data = response.json()
+            logger.debug(f"📥 Resposta: {data}")
+
+            if data.get("status") == "success":
+                prazos = data.get("dataset", [])
+
+                if not prazos:
+                    return {
+                        "sucesso": False,
+                        "erro": f"Nenhum prazo encontrado para forma {codigo_pagamento} e quantidade {quantidade_total}"
+                    }
+
+                # Formatar prazos para exibição
+                prazos_formatados = []
+                for idx, prazo in enumerate(prazos, 1):
+                    prazos_formatados.append({
+                        "numero": idx,
+                        "descricao": prazo.get("prazo", prazo.get("descricao", "")),
+                        "codigo": prazo.get("codigo", ""),
+                        "condicao": prazo.get("condicao", "")
+                    })
+
+                logger.success(f"✅ Encontrados {len(prazos_formatados)} prazos para forma {codigo_pagamento}")
+
+                return {
+                    "sucesso": True,
+                    "codigo_pagamento": codigo_pagamento,
+                    "quantidade_total": quantidade_total,
+                    "prazos": prazos_formatados,
+                    "total_prazos": len(prazos_formatados)
+                }
+            else:
+                error_msg = data.get("message", "Erro desconhecido")
+                logger.error(f"❌ Erro na API: {error_msg}")
+                return {
+                    "sucesso": False,
+                    "erro": error_msg
+                }
+        else:
+            logger.error(f"❌ HTTP {response.status_code}: {response.text}")
+            return {
+                "sucesso": False,
+                "erro": f"Erro HTTP {response.status_code}"
+            }
+
+    except httpx.TimeoutException:
+        logger.error(f"⏱️ Timeout ao consultar prazos por forma")
+        return {
+            "sucesso": False,
+            "erro": "Timeout na conexão com a API"
+        }
+    except Exception as e:
+        logger.error(f"💥 Erro ao consultar prazos por forma: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return {
+            "sucesso": False,
+            "erro": f"Erro de comunicação: {str(e)}"
+        }
+
+
 # ============================================================================
 # LISTA DE TOOLS PARA O AGENTE
 # ============================================================================
@@ -1273,8 +1400,9 @@ ALICE_TOOLS = [
     verificar_cliente,
     buscar_baterias,
     consultar_baterias,
-    consultar_prazos_pagamento,
-    consultar_condicoes_pagamento,  # Nova tool
+    consultar_prazos_pagamento,  # Mantida por compatibilidade (pode remover depois)
+    consultar_formas_pagamento,  # API 1: Retorna formas (PIX, Dinheiro, etc)
+    consultar_prazos_por_forma,  # API 2: Retorna prazos baseado na forma
     enviar_pedido,
     transferir_para_humano
 ]

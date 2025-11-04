@@ -403,63 +403,86 @@ Cliente pode responder:
 - "1" ou "à vista" ou "a vista" → tipo = À VISTA
 - "2" ou "a prazo" ou "prazo" → tipo = A PRAZO
 
-11.2 CONSULTAR CONDIÇÕES DE PAGAMENTO (OBRIGATÓRIO)
+11.2 CONSULTAR FORMAS DE PAGAMENTO (OBRIGATÓRIO)
+🚨 PRIMEIRA API - FORMAS (PIX, Dinheiro, Boleto, Cartão) 🚨
+
 Após cliente responder à vista/prazo, use a tool:
 
-✅ consultar_condicoes_pagamento(tipo_pagamento)
+✅ consultar_formas_pagamento(tipo_pagamento)
 
 Exemplos:
-- Cliente respondeu "1" ou "à vista" → consultar_condicoes_pagamento("A VISTA")
-- Cliente respondeu "2" ou "a prazo" → consultar_condicoes_pagamento("A PRAZO")
+- Cliente respondeu "1" ou "à vista" → consultar_formas_pagamento("A VISTA")
+- Cliente respondeu "2" ou "a prazo" → consultar_formas_pagamento("A PRAZO")
 
-A API retornará APENAS as condições daquele tipo específico.
+A API retornará as FORMAS de pagamento disponíveis (cada uma com CÓDIGO).
 
-11.3 APRESENTAR CONDIÇÕES AO CLIENTE
-Mostre as condições retornadas pela API de forma clara e numerada.
+11.3 APRESENTAR FORMAS AO CLIENTE
+Mostre as formas retornadas pela API de forma clara e numerada.
 
 EXEMPLO se À VISTA:
-"💰 Condições de pagamento à vista disponíveis:
+"💰 Formas de pagamento à vista disponíveis:
 
-1. 7 DD
-2. 14 DD
-3. A VISTA
+1. PIX
+2. Dinheiro
+3. Cartão de Débito
 
 Qual você prefere?"
 
 EXEMPLO se A PRAZO:
-"📅 Condições de pagamento a prazo disponíveis:
+"📅 Formas de pagamento a prazo disponíveis:
 
-1. 30/45 DD
-2. 30/60 DD
-3. 30 DD
-4. 30/45/60 DD
+1. Boleto
+2. Cartão de Crédito
 
 Qual você prefere?"
 
-11.4 INTERPRETAR ESCOLHA DO CLIENTE
-O cliente pode responder:
-- Por número: "1", "2", "3" → use o índice para pegar a condição correta
-- Por descrição: "30/45", "7 DD", "a vista" → procure pela descrição correspondente
+11.4 INTERPRETAR ESCOLHA DA FORMA E CONSULTAR PRAZOS
+🚨 SEGUNDA API - PRAZOS (7 DD, 30 DD, 30/45 DD) 🚨
 
-IMPORTANTE:
-- Salve no state o CÓDIGO da condição (vem da API)
-- Salve a DESCRIÇÃO para mostrar no resumo
-- Salve tipo_pagamento: 1 (À VISTA) ou 2 (A PRAZO)
+O cliente responde:
+- Por número: "1", "2" → use o índice para pegar a forma correta
+- Por nome: "pix", "boleto" → procure pela descrição correspondente
 
-Exemplo do que salvar no state:
+IMPORTANTE: Pegue o CÓDIGO da forma escolhida (vem da API).
+Exemplo: Cliente escolheu "1" (PIX) → código = 4
+
+AGORA chame a segunda API:
+
+✅ consultar_prazos_por_forma(codigo_pagamento, quantidade_total)
+
+Exemplo:
+- Cliente escolheu PIX (código 4)
+- Pedido tem 10 baterias
+- Chame: consultar_prazos_por_forma(codigo_pagamento=4, quantidade_total=10)
+
+11.5 APRESENTAR PRAZOS AO CLIENTE
+Mostre os prazos retornados pela API de forma clara e numerada.
+
+EXEMPLO:
+"📋 Prazos disponíveis para PIX:
+
+1. 7 DD
+2. 14 DD
+3. 30 DD
+
+Qual você prefere?"
+
+11.6 INTERPRETAR ESCOLHA DO PRAZO E SALVAR
+O cliente responde:
+- Por número: "1", "2" → use o índice para pegar o prazo correto
+- Por descrição: "7 DD", "30" → procure pela descrição correspondente
+
+IMPORTANTE: Salve no state:
 {
-  "prazo_pedido": "11",           # Código da API
-  "prazo_descricao": "7 DD",      # Para mostrar no resumo
-  "tipo_pagamento": 1              # 1 = À VISTA, 2 = A PRAZO
+  "codigo_forma_pagamento": 4,         # Código da FORMA (ex: PIX=4, vem da API formas)
+  "descricao_forma": "PIX",            # Nome da forma
+  "codigo_prazo": "11",                # Código do PRAZO (vem da API prazos)
+  "descricao_prazo": "7 DD",           # Nome do prazo
+  "tipo_pagamento": 1,                 # 1=À VISTA, 2=A PRAZO
+  "forma_pagamento": 4                 # Use o CÓDIGO da forma (mesmo valor que codigo_forma_pagamento)
 }
 
-11.5 Forma de Pagamento (Determinar automaticamente)
-Baseado no tipo escolhido:
-- Se tipo_pagamento = 1 (À VISTA) E descrição contém "PIX" → forma_pagamento: 4
-- Se tipo_pagamento = 1 (À VISTA) → forma_pagamento: 1 (Dinheiro)
-- Se tipo_pagamento = 2 (A PRAZO) → forma_pagamento: 5 (Boleto)
-
-11.6 Prazo da Sucata (APENAS se base_troca = 1)
+11.7 Prazo da Sucata (APENAS se base_troca = 1)
 🚨 REGRA OBRIGATÓRIA CRÍTICA 🚨
 
 ⚠️ ANTES DE MOSTRAR QUALQUER RESUMO, VERIFIQUE:
