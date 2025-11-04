@@ -87,14 +87,18 @@ Analise esta conversa entre Alice (vendedora) e o Cliente, e extraia APENAS as i
 
 {conversation_text}
 
-Extraia:
+Extraia OBRIGATORIAMENTE:
 - Nome do cliente (se mencionado)
 - CNPJ (se mencionado)
-- Produtos mencionados ou consultados
+- Produtos mencionados ou consultados com quantidades
+- **TROCA DE SUCATA: SIM ou NÃO** (CRÍTICO - sempre mencione)
+- Condições de pagamento escolhidas
 - Decisões tomadas (escolhas, confirmações)
 - Etapa atual do atendimento
 
-Seja MUITO conciso. Máximo 5 linhas."""
+⚠️ IMPORTANTE: Se o cliente mencionou sobre troca de sucata (sim/não/com troca/sem troca), SEMPRE inclua "Troca de sucata: SIM" ou "Troca de sucata: NÃO" no resumo.
+
+Seja MUITO conciso. Máximo 7 linhas."""
 
         # Gera resumo
         response = self.llm.invoke([HumanMessage(content=prompt)])
