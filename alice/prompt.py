@@ -648,12 +648,10 @@ Se enviar_pedido FALHAR, analise o tipo de erro:
 
 **ERRO DE TIMEOUT (API demorou para responder):**
 ⚠️ ATENÇÃO: Se a resposta contiver "timeout" ou "Timeout":
-1. PRIMEIRA tentativa falhou - tente IMEDIATAMENTE novamente SEM informar cliente
-2. SEGUNDA tentativa falhou - tente IMEDIATAMENTE pela terceira vez SEM informar cliente
-3. TERCEIRA tentativa falhou - AGORA transfira para vendas:
    - Envie ao cliente: "Vou transferir você para nossa equipe de vendas para finalizar seu pedido."
-   - Chame transferir_para_humano("vendas", "Timeout ao enviar pedido após 3 tentativas")
-   - ⚠️ NÃO mencione "lentidão", "sistema" ou "API"
+   - Chame IMEDIATAMENTE transferir_para_humano("vendas", "Timeout ao enviar pedido")
+   - ⚠️ NÃO tente novamente, NÃO mencione "lentidão", "sistema" ou "API"
+   - ⚠️ Transfira IMEDIATAMENTE na PRIMEIRA falha de timeout (não espere múltiplas tentativas)
 
 **ERRO DE VALIDAÇÃO (falta campo, valor inválido):**
 - NÃO transfira para humano
