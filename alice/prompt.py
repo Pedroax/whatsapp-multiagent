@@ -452,21 +452,28 @@ Qual você prefere?"
 11.4 INTERPRETAR ESCOLHA DA FORMA E CONSULTAR PRAZOS
 🚨 SEGUNDA API - PRAZOS (7 DD, 30 DD, 30/45 DD) 🚨
 
-O cliente responde:
-- Por número: "1", "2" → use o índice para pegar a forma correta
-- Por nome: "pix", "boleto" → procure pela descrição correspondente
+⚠️ ATENÇÃO CRÍTICA: Use o CÓDIGO da API, NÃO o número da lista! ⚠️
 
-IMPORTANTE: Pegue o CÓDIGO da forma escolhida (vem da API).
-Exemplo: Cliente escolheu "1" (PIX) → código = 4
+PASSO A PASSO OBRIGATÓRIO:
+1. Cliente escolhe um número (ex: "4")
+2. Pegue a 4ª forma da lista que você mostrou
+3. Pegue o CÓDIGO dessa forma (que veio da API no campo "codigo")
+4. Use esse CÓDIGO na chamada da API
 
-AGORA chame a segunda API:
+EXEMPLO CORRETO:
+API retornou:
+- 1. BOLETO (codigo: "4")
+- 2. CARTÃO 1X (codigo: "5")
+- 3. CARTÃO 2X (codigo: "6")
+- 4. CARTÃO 3X (codigo: "7")
 
-✅ consultar_prazos_por_forma(codigo_pagamento, quantidade_total)
+Cliente responde: "4"
+Você deve usar: codigo_pagamento=7 (CÓDIGO do Cartão 3X)
+❌ NÃO use: codigo_pagamento=4 (isso seria o código do Boleto!)
 
-Exemplo:
-- Cliente escolheu PIX (código 4)
-- Pedido tem 10 baterias
-- Chame: consultar_prazos_por_forma(codigo_pagamento=4, quantidade_total=10)
+✅ consultar_prazos_por_forma(codigo_pagamento=7, quantidade_total=20)
+
+⚠️ NUNCA confunda o número da opção com o código da API!
 
 11.5 APRESENTAR PRAZOS AO CLIENTE
 Mostre os prazos retornados pela API de forma clara e numerada.
