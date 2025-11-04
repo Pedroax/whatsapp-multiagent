@@ -51,6 +51,13 @@ class ConsultarPrazosInput(BaseModel):
     valor_total: float = Field(description="Valor total do pedido em reais")
 
 
+class ConsultarCondicoesPagamentoInput(BaseModel):
+    """Schema para consultar condições de pagamento (À VISTA ou A PRAZO)"""
+    tipo_pagamento: str = Field(
+        description="Tipo de pagamento: 'A VISTA' ou 'A PRAZO' (ou '1' para à vista, '2' para a prazo)"
+    )
+
+
 # ============================================================================
 # FUNÇÕES AUXILIARES
 # ============================================================================
@@ -1132,6 +1139,132 @@ async def consultar_prazos_pagamento(quantidade_total: int, valor_total: float) 
         }
 
 
+@tool(args_schema=ConsultarCondicoesPagamentoInput)
+async def consultar_condicoes_pagamento(tipo_pagamento: str) -> Dict[str, Any]:
+    """
+    Consulta as condições de pagamento disponíveis (À VISTA ou A PRAZO) na API Fausoft.
+
+    Esta tool deve ser chamada APÓS o cliente confirmar a cotação e ANTES de mostrar
+    as opções específicas de prazo.
+
+    Args:
+        tipo_pagamento: "A VISTA", "1", "à vista" OU "A PRAZO", "2", "a prazo"
+
+    Returns:
+        Dict com lista de condições de pagamento disponíveis
+
+    Exemplo de uso no fluxo:
+    1. Cliente confirma cotação: "sim"
+    2. IA pergunta: "É à vista ou a prazo? 1️⃣ À vista / 2️⃣ A prazo"
+    3. Cliente: "1" ou "à vista"
+    4. IA chama esta tool: consultar_condicoes_pagamento("A VISTA")
+    5. IA mostra opções retornadas
+    """
+    try:
+        # Normalizar entrada
+        tipo_normalizado = tipo_pagamento.strip().upper()
+
+        # Mapear respostas do cliente para formato da API
+        if tipo_normalizado in ["1", "À VISTA", "A VISTA", "VISTA", "AVISTA"]:
+            condicao = "A VISTA"
+        elif tipo_normalizado in ["2", "À PRAZO", "A PRAZO", "PRAZO", "APRAZO"]:
+            condicao = "A PRAZO"
+        else:
+            return {
+                "sucesso": False,
+                "erro": f"Tipo de pagamento inválido: {tipo_pagamento}. Use 'A VISTA' ou 'A PRAZO'"
+            }
+
+        logger.info(f"🔍 Consultando condições de pagamento: {condicao}")
+
+        # Gerar autenticação
+        auth = gerar_autenticacao()
+
+        # Montar payload
+        payload = {
+            "timestamp": auth["timestamp"],
+            "token": auth["token"],
+            "action": "select",
+            "instance": "pagamentos",
+            "dataset": {
+                "condicao_pagamento": condicao
+            }
+        }
+
+        logger.debug(f"📤 Payload: {payload}")
+
+        # Fazer requisição
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                "https://www.grupolc.app.br/api/",
+                json=payload,
+                timeout=15.0
+            )
+
+        logger.debug(f"📥 Status Code: {response.status_code}")
+
+        # Processar resposta
+        if response.status_code == 200:
+            data = response.json()
+            logger.debug(f"📥 Resposta: {data}")
+
+            if data.get("status") == "success":
+                condicoes = data.get("dataset", [])
+
+                if not condicoes:
+                    return {
+                        "sucesso": False,
+                        "erro": f"Nenhuma condição de pagamento encontrada para {condicao}"
+                    }
+
+                # Formatar condições para exibição
+                condicoes_formatadas = []
+                for idx, cond in enumerate(condicoes, 1):
+                    condicoes_formatadas.append({
+                        "numero": idx,
+                        "descricao": cond.get("descricao", ""),
+                        "codigo": cond.get("codigo", ""),
+                        "tipo": condicao
+                    })
+
+                logger.success(f"✅ Encontradas {len(condicoes_formatadas)} condições para {condicao}")
+
+                return {
+                    "sucesso": True,
+                    "tipo_pagamento": condicao,
+                    "condicoes": condicoes_formatadas,
+                    "total_condicoes": len(condicoes_formatadas)
+                }
+            else:
+                error_msg = data.get("message", "Erro desconhecido")
+                logger.error(f"❌ Erro na API: {error_msg}")
+                return {
+                    "sucesso": False,
+                    "erro": error_msg
+                }
+        else:
+            logger.error(f"❌ HTTP {response.status_code}: {response.text}")
+            return {
+                "sucesso": False,
+                "erro": f"Erro HTTP {response.status_code}"
+            }
+
+    except httpx.TimeoutException:
+        logger.error(f"⏱️ Timeout ao consultar condições de pagamento")
+        return {
+            "sucesso": False,
+            "erro": "Timeout na conexão com a API"
+        }
+    except Exception as e:
+        logger.error(f"💥 Erro ao consultar condições: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return {
+            "sucesso": False,
+            "erro": f"Erro de comunicação: {str(e)}"
+        }
+
+
 # ============================================================================
 # LISTA DE TOOLS PARA O AGENTE
 # ============================================================================
@@ -1141,6 +1274,7 @@ ALICE_TOOLS = [
     buscar_baterias,
     consultar_baterias,
     consultar_prazos_pagamento,
+    consultar_condicoes_pagamento,  # Nova tool
     enviar_pedido,
     transferir_para_humano
 ]
