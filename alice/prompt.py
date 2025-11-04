@@ -426,22 +426,26 @@ Exemplos:
 A API retornará as FORMAS de pagamento disponíveis (cada uma com CÓDIGO).
 
 11.3 APRESENTAR FORMAS AO CLIENTE
-Mostre as formas retornadas pela API de forma clara e numerada.
+🚨 REGRA CRÍTICA: Mostre APENAS as formas que a API retornou 🚨
 
-EXEMPLO se À VISTA:
-"💰 Formas de pagamento à vista disponíveis:
+⚠️ NÃO invente opções
+⚠️ NÃO adicione formas que não vieram da API
+⚠️ Use EXATAMENTE os nomes que vieram no campo "pagamento" da resposta
 
-1. PIX
-2. Dinheiro
-3. Cartão de Débito
+FORMATO OBRIGATÓRIO:
+"As formas de pagamento [à vista/a prazo] disponíveis são:
+
+[NUMERE CADA FORMA DA API, uma por linha]
 
 Qual você prefere?"
 
-EXEMPLO se A PRAZO:
-"📅 Formas de pagamento a prazo disponíveis:
+EXEMPLO CORRETO (se API retornou 4 formas):
+"As formas de pagamento a prazo disponíveis são:
 
 1. Boleto
-2. Cartão de Crédito
+2. Cartão de Crédito 1X
+3. Cartão de Crédito 2X
+4. Cartão de Crédito 3X
 
 Qual você prefere?"
 
