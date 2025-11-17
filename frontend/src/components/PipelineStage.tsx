@@ -115,9 +115,10 @@ interface PipelineStageProps {
   estagio: EstagioType | null
   onChangeEstagio: (novoEstagio: EstagioType) => void
   loading?: boolean
+  compact?: boolean // Para usar no LeadsManager
 }
 
-export function PipelineStage({ estagio, onChangeEstagio, loading }: PipelineStageProps) {
+export function PipelineStage({ estagio, onChangeEstagio, loading, compact = false }: PipelineStageProps) {
   const [mostrarDropdown, setMostrarDropdown] = useState(false)
 
   const estagioAtual = estagio ? ESTAGIOS_PIPELINE[estagio] : null
@@ -128,17 +129,17 @@ export function PipelineStage({ estagio, onChangeEstagio, loading }: PipelineSta
       {/* Badge atual - clicável para abrir dropdown */}
       <Button
         variant="outline"
-        className={`w-full justify-between ${estagioAtual ? estagioAtual.colorLight + ' ' + estagioAtual.colorBorder : 'bg-gray-50'}`}
+        className={`${compact ? 'w-auto px-3 py-1' : 'w-full'} justify-between ${estagioAtual ? estagioAtual.colorLight + ' ' + estagioAtual.colorBorder : 'bg-gray-50'}`}
         onClick={() => setMostrarDropdown(!mostrarDropdown)}
         disabled={loading}
       >
         <div className="flex items-center gap-2">
-          {estagioAtual && <Icon className={`h-4 w-4 ${estagioAtual.colorText}`} />}
-          <span className={estagioAtual ? estagioAtual.colorText : 'text-gray-500'}>
-            {estagioAtual?.label || 'Selecione o estágio'}
+          {estagioAtual && <Icon className={`${compact ? 'h-3 w-3' : 'h-4 w-4'} ${estagioAtual.colorText}`} />}
+          <span className={`${compact ? 'text-xs' : ''} ${estagioAtual ? estagioAtual.colorText : 'text-gray-500'}`}>
+            {estagioAtual?.label || 'Estágio'}
           </span>
         </div>
-        <ChevronDown className={`h-4 w-4 transition-transform ${mostrarDropdown ? 'rotate-180' : ''}`} />
+        <ChevronDown className={`${compact ? 'h-3 w-3' : 'h-4 w-4'} transition-transform ${mostrarDropdown ? 'rotate-180' : ''}`} />
       </Button>
 
       {/* Dropdown com todos os estágios */}
@@ -151,7 +152,7 @@ export function PipelineStage({ estagio, onChangeEstagio, loading }: PipelineSta
           />
 
           {/* Lista de opções */}
-          <div className="absolute top-full left-0 right-0 mt-2 bg-white border rounded-lg shadow-xl z-20 max-h-96 overflow-y-auto">
+          <div className={`absolute ${compact ? 'right-0 w-72' : 'left-0 right-0'} top-full mt-2 bg-white border rounded-lg shadow-xl z-20 max-h-96 overflow-y-auto`}>
             {Object.entries(ESTAGIOS_PIPELINE).map(([key, config]) => {
               const EstagioIcon = config.icon
               const isSelected = estagio === key
@@ -163,23 +164,25 @@ export function PipelineStage({ estagio, onChangeEstagio, loading }: PipelineSta
                     onChangeEstagio(key as EstagioType)
                     setMostrarDropdown(false)
                   }}
-                  className={`w-full px-4 py-3 flex items-start gap-3 hover:bg-gray-50 transition-colors border-b last:border-b-0 ${
+                  className={`w-full ${compact ? 'px-3 py-2' : 'px-4 py-3'} flex items-start gap-3 hover:bg-gray-50 transition-colors border-b last:border-b-0 ${
                     isSelected ? config.colorLight : ''
                   }`}
                 >
-                  <div className={`p-2 rounded-full ${config.colorLight} flex-shrink-0`}>
-                    <EstagioIcon className={`h-5 w-5 ${config.colorText}`} />
+                  <div className={`${compact ? 'p-1.5' : 'p-2'} rounded-full ${config.colorLight} flex-shrink-0`}>
+                    <EstagioIcon className={`${compact ? 'h-4 w-4' : 'h-5 w-5'} ${config.colorText}`} />
                   </div>
                   <div className="flex-1 text-left">
-                    <div className={`font-semibold ${config.colorText}`}>
+                    <div className={`${compact ? 'text-sm' : ''} font-semibold ${config.colorText}`}>
                       {config.label}
                       {isSelected && (
-                        <CheckCircle2 className="inline h-4 w-4 ml-2" />
+                        <CheckCircle2 className={`inline ${compact ? 'h-3 w-3' : 'h-4 w-4'} ml-2`} />
                       )}
                     </div>
-                    <div className="text-xs text-gray-500 mt-0.5">
-                      {config.description}
-                    </div>
+                    {!compact && (
+                      <div className="text-xs text-gray-500 mt-0.5">
+                        {config.description}
+                      </div>
+                    )}
                   </div>
                 </button>
               )

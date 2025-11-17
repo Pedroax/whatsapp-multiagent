@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { PipelineBadge, type EstagioType } from './PipelineStage'
+import { PipelineStage, PipelineBadge, type EstagioType } from './PipelineStage'
 
 interface Lead {
   id: string
@@ -75,6 +75,32 @@ export function LeadsManager({ onClose }: LeadsManagerProps) {
       lead.tags.some(t => t.toLowerCase().includes(busca))
     )
   })
+
+  // Atualizar pipeline de um lead
+  const atualizarPipeline = async (telefone: string, novoEstagio: EstagioType) => {
+    try {
+      const phone = telefone.replace(/\D/g, '')
+      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/conversas/${phone}/pipeline`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ estagio: novoEstagio })
+      })
+
+      if (response.ok) {
+        // Atualizar lead localmente
+        setLeads(leads.map(lead =>
+          lead.telefone === telefone
+            ? { ...lead, estagio_pipeline: novoEstagio }
+            : lead
+        ))
+      } else {
+        alert('Erro ao atualizar estágio do pipeline')
+      }
+    } catch (error) {
+      console.error('Erro ao atualizar pipeline:', error)
+      alert('Erro ao atualizar estágio do pipeline')
+    }
+  }
 
   // Exportar para CSV
   const exportarCSV = () => {
@@ -267,9 +293,6 @@ export function LeadsManager({ onClose }: LeadsManagerProps) {
                             Frio
                           </Badge>
                         )}
-                        {lead.estagio_pipeline && (
-                          <PipelineBadge estagio={lead.estagio_pipeline} size="sm" />
-                        )}
                       </div>
 
                       <div className="text-sm text-gray-600 mb-3">
@@ -298,7 +321,16 @@ export function LeadsManager({ onClose }: LeadsManagerProps) {
                       </div>
                     </div>
 
-                    <div className="text-right">
+                    <div className="flex flex-col items-end gap-2">
+                      {/* Pipeline Stage - Editável e Compacto */}
+                      <PipelineStage
+                        estagio={lead.estagio_pipeline || 'novo'}
+                        onChangeEstagio={(novoEstagio) => atualizarPipeline(lead.telefone, novoEstagio)}
+                        loading={false}
+                        compact={true}
+                      />
+
+                      {/* Status badge */}
                       <Badge variant="secondary" className="text-xs">
                         {lead.status}
                       </Badge>
