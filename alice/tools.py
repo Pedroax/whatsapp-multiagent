@@ -522,7 +522,16 @@ async def consultar_baterias(query: str) -> Dict[str, Any]:
 
                 for preco in precos:
                     # Verificar empresa
-                    if int(preco.get("empresa", 0)) != codigo_empresa:
+                    empresa_preco = preco.get("empresa", "0")
+                    # Se empresa estiver vazia ou inválida, pular
+                    if not empresa_preco or empresa_preco == "":
+                        continue
+
+                    try:
+                        if int(empresa_preco) != codigo_empresa:
+                            continue
+                    except (ValueError, TypeError):
+                        logger.warning(f"⚠️ Empresa inválida no preço: {empresa_preco}")
                         continue
 
                     # Verificar sucata
@@ -636,7 +645,7 @@ async def enviar_pedido(pedido_json: str) -> Dict[str, Any]:
     - Aceita produtos como array, objeto único, ou string JSON
     - Garante que API sempre receba array válido
     - Converte tipos automaticamente (int, float, string)
-    - Trata campos opcionais (prazo_sucata só se base_troca=1)
+    - Trata campos opcionais (prazo_sucata, parcelas_cartao)
 
     Args:
         pedido_json: Dict com campos:
@@ -648,6 +657,7 @@ async def enviar_pedido(pedido_json: str) -> Dict[str, Any]:
             - forma_pagamento: int (obrigatório)
             - prazo_pedido: string (obrigatório)
             - prazo_sucata: string (opcional, só se base_troca=1)
+            - parcelas_cartao: int (opcional, só se for Cartão de Crédito - valores: 1, 2 ou 3)
 
     Returns:
         Dict com:
@@ -848,6 +858,21 @@ async def enviar_pedido(pedido_json: str) -> Dict[str, Any]:
                 logger.warning("⚠️ base_troca=1 mas prazo_sucata não fornecido")
         else:
             logger.debug("✓ Sem troca de sucata, prazo_sucata não incluído")
+
+        # ===================================================================
+        # TRATAMENTO CONDICIONAL DO PARCELAS_CARTAO (CARTÃO DE CRÉDITO)
+        # ===================================================================
+
+        # Se tiver parcelas_cartao (Cartão de Crédito), adicionar ao dataset
+        parcelas_cartao = pedido_json.get('parcelas_cartao')
+        if parcelas_cartao:
+            try:
+                dataset['parcelas_cartao'] = int(parcelas_cartao)
+                logger.debug(f"✓ Parcelas do cartão incluídas: {parcelas_cartao}x")
+            except (ValueError, TypeError):
+                logger.warning(f"⚠️ parcelas_cartao inválido: {parcelas_cartao}")
+        else:
+            logger.debug("✓ Sem parcelas de cartão (não é Cartão de Crédito)")
 
         # ===================================================================
         # GERAR AUTENTICAÇÃO E PAYLOAD

@@ -47,6 +47,23 @@ class AliceAgent:
 
         logger.info("✅ Alice Agent inicializada com otimização de mensagens")
 
+    def _get_promocoes_ativas_sync(self) -> list:
+        """
+        Obtém promoções ativas de forma síncrona para injeção no contexto
+
+        Returns:
+            Lista de promoções ativas ou lista vazia em caso de erro
+        """
+        try:
+            from utils.supabase_client import get_supabase_client
+            supabase = get_supabase_client()
+
+            result = supabase.rpc("obter_promocoes_ativas", {"empresa": "emp1"}).execute()
+            return result.data or []
+        except Exception as e:
+            logger.warning(f"⚠️ Erro ao obter promoções ativas: {e}")
+            return []
+
     def _create_graph(self) -> StateGraph:
         """Cria o grafo de estados do agente"""
 
@@ -134,6 +151,15 @@ class AliceAgent:
             )
         if state.get("nome_empresa"):
             context_parts.append(f"EMPRESA: {state['nome_empresa']}")
+
+        # 🎁 PROMOÇÕES ATIVAS (novo)
+        promocoes = self._get_promocoes_ativas_sync()
+        if promocoes:
+            context_parts.append("\n🎁 PROMOÇÕES ATIVAS:")
+            for promo in promocoes:
+                context_parts.append(
+                    f"  - {promo['nome_campanha']}: {promo['mensagem_promocao']}"
+                )
 
         # Busca de produtos
         if state.get("baterias_encontradas"):

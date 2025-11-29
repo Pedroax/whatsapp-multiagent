@@ -12,6 +12,7 @@ from alice.agent import AliceAgent
 from alice.session_manager import SessionManager
 from alice.ia_control_endpoints import router as ia_control_router
 from alice.learning_endpoints import router as learning_router
+from alice.disparador_endpoints import router as disparador_router
 from whatsapp.evolution_api import EvolutionAPI
 from utils.debouncer import MessageDebouncer
 from utils.message_splitter import send_with_typing_simulation
@@ -39,9 +40,10 @@ if settings.debug:
 
 app = FastAPI(title="Alice - LC Baterias", version="1.0.0")
 
-# Incluir routers de controle da IA e aprendizado
+# Incluir routers de controle da IA, aprendizado e disparador
 app.include_router(ia_control_router)
 app.include_router(learning_router)
+app.include_router(disparador_router)
 
 # Configurar CORS para permitir requisições do frontend
 app.add_middleware(
