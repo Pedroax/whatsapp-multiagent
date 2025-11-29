@@ -520,9 +520,9 @@ PASSO A PASSO OBRIGATÓRIO:
       ➡️ PERGUNTE EXATAMENTE assim:
          "Em quantas parcelas?
 
-         1️⃣ 1x (à vista)
-         2️⃣ 2x (sem juros)
-         3️⃣ 3x (sem juros)"
+         1️⃣ 1x
+         2️⃣ 2x
+         3️⃣ 3x"
 
       ➡️ AGUARDE resposta do cliente
       ➡️ ACEITE qualquer uma destas respostas:
@@ -560,9 +560,9 @@ Cenário A - Cliente escolhe PIX:
 Cenário B - Cliente escolhe Cartão de Crédito:
 ✅ NÃO consulta prazos na API
 ✅ PERGUNTA: "Em quantas parcelas?
-              1️⃣ 1x (à vista)
-              2️⃣ 2x (sem juros)
-              3️⃣ 3x (sem juros)"
+              1️⃣ 1x
+              2️⃣ 2x
+              3️⃣ 3x"
 ✅ Cliente responde: "2" (ou "2x", "dois", "duas")
 ✅ Salva: {
   "codigo_forma_pagamento": 6,
