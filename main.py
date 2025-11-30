@@ -1,4 +1,4 @@
-"""Aplicação principal da Alice"""
+"""Aplicação principal da Paula - Clínica Caru Moreno"""
 import asyncio
 from typing import Optional
 from fastapi import FastAPI, Request, HTTPException, Depends
@@ -8,11 +8,10 @@ from loguru import logger
 import sys
 
 from config import settings
-from alice.agent import AliceAgent
+from paula.agent import PaulaAgent
 from alice.session_manager import SessionManager
-from alice.ia_control_endpoints import router as ia_control_router
-from alice.learning_endpoints import router as learning_router
-from alice.disparador_endpoints import router as disparador_router
+from paula.ia_control_endpoints import router as ia_control_router
+from paula.learning_endpoints import router as learning_router
 from whatsapp.evolution_api import EvolutionAPI
 from utils.debouncer import MessageDebouncer
 from utils.message_splitter import send_with_typing_simulation
@@ -31,38 +30,30 @@ logger.add(
 )
 
 if settings.debug:
-    logger.add("logs/alice_{time}.log", rotation="1 day", retention="7 days")
+    logger.add("logs/paula_{time}.log", rotation="1 day", retention="7 days")
 
 
 # ============================================================================
 # INICIALIZAÇÃO
 # ============================================================================
 
-app = FastAPI(title="Alice - LC Baterias", version="1.0.0")
+app = FastAPI(title="Paula - Clínica Caru Moreno", version="1.0.0")
 
-# Incluir routers de controle da IA, aprendizado e disparador
+# Incluir routers de controle da IA e aprendizado
 app.include_router(ia_control_router)
 app.include_router(learning_router)
-app.include_router(disparador_router)
 
 # Configurar CORS para permitir requisições do frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://localhost:5174",
-        "http://localhost:5175",
-        "http://138.68.13.174",
-        "http://lcbaterias.automatexia.com.br",
-        "https://lcbaterias.automatexia.com.br"
-    ],
-    allow_credentials=True,
+    allow_origins=["*"],  # TEMPORÁRIO: aceita qualquer origem
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 # Componentes globais
-alice_agent: Optional[AliceAgent] = None
+paula_agent: Optional[PaulaAgent] = None
 session_manager: Optional[SessionManager] = None
 whatsapp_api: Optional[EvolutionAPI] = None
 debouncer: Optional[MessageDebouncer] = None
@@ -85,7 +76,7 @@ async def salvar_mensagem(conversa_id: str, remetente: str, conteudo: str, tipo_
 
         supabase = create_client(settings.supabase_url, settings.supabase_service_key)
 
-        supabase.table("mensagens").insert({
+        supabase.table("paula_mensagens").insert({
             "conversa_id": conversa_id,
             "remetente": remetente,
             "conteudo": conteudo,
@@ -101,12 +92,12 @@ async def salvar_mensagem(conversa_id: str, remetente: str, conteudo: str, tipo_
 @app.on_event("startup")
 async def startup():
     """Inicializa componentes"""
-    global alice_agent, session_manager, whatsapp_api, debouncer, media_processor
+    global paula_agent, session_manager, whatsapp_api, debouncer, media_processor
 
-    logger.info("🚀 Iniciando Alice...")
+    logger.info("🚀 Iniciando Paula...")
 
     # Agente
-    alice_agent = AliceAgent()
+    paula_agent = PaulaAgent()
 
     # Gerenciador de sessões
     session_manager = SessionManager(use_supabase=True)
@@ -120,18 +111,18 @@ async def startup():
     # Processador de mídia
     media_processor = MediaProcessor()
 
-    logger.success("✅ Alice iniciada com sucesso!")
+    logger.success("✅ Paula iniciada com sucesso!")
 
 
 @app.on_event("shutdown")
 async def shutdown():
     """Encerra componentes"""
-    logger.info("🛑 Encerrando Alice...")
+    logger.info("🛑 Encerrando Paula...")
 
     if session_manager:
         await session_manager.close()
 
-    logger.info("👋 Alice encerrada")
+    logger.info("👋 Paula encerrada")
 
 
 # ============================================================================
@@ -170,7 +161,7 @@ async def whatsapp_webhook(request: Request):
         key = data.get("key", {})
         message_data = data.get("message", {})
 
-        # Ignora mensagens enviadas pela própria Alice
+        # Ignora mensagens enviadas pela própria Paula
         if key.get("fromMe"):
             return JSONResponse({"status": "ignored", "reason": "message from me"})
 
@@ -258,49 +249,53 @@ async def whatsapp_webhook(request: Request):
                 logger.warning("⚠️ Mensagem sem texto ou mídia, ignorando")
                 return JSONResponse({"status": "ignored", "reason": "no content"})
 
+            # CRITICAL: Fix encoding issues from WhatsApp
+            # Remove non-breaking spaces and fix Unicode
+            message_text = message_text.replace('\xa0', ' ').strip()
+
+            # Ensure proper UTF-8 encoding
+            try:
+                message_text = message_text.encode('utf-8').decode('utf-8')
+            except (UnicodeEncodeError, UnicodeDecodeError):
+                # If encoding fails, try to fix common issues
+                message_text = message_text.encode('utf-8', errors='ignore').decode('utf-8', errors='ignore')
+
             logger.info(f"📨 Mensagem de texto de {phone}: '{message_text[:50]}...'")
 
         # ========================================================================
-        # COMANDO /reset - Limpa memória do cliente
+        # COMANDO /reset ou /delete - Limpa memória completa do cliente
         # ========================================================================
-        if message_text.strip().lower() in ['/reset', '/delete']:
-            logger.warning(f"🔄 Comando /reset recebido de {phone}")
+        if message_text.strip().lower() in ['/reset', '/delete', '/limpar']:
+            logger.warning(f"🔄 Comando /delete recebido de {phone}")
 
             # CRÍTICO: Limpa buffer do debouncer ANTES de processar
             debouncer.clear_buffer(phone)
 
             try:
-                # 1. Buscar IDs das conversas
-                from supabase import create_client
-                supabase = create_client(settings.supabase_url, settings.supabase_service_key)
+                # Usa o novo método unificado do SessionManager
+                sucesso = await session_manager.delete_session_complete(phone)
 
-                conversas = supabase.table('conversas').select('id').eq('phone', phone).execute()
-                conversa_ids = [c['id'] for c in (conversas.data or [])]
+                if sucesso:
+                    logger.success(f"✅ Memória de {phone} resetada com sucesso!")
 
-                # 2. Apagar mensagens dessas conversas
-                if conversa_ids:
-                    for conv_id in conversa_ids:
-                        supabase.table('mensagens').delete().eq('conversa_id', conv_id).execute()
+                    # Enviar mensagem de confirmação amigável
+                    await whatsapp_api.send_text(
+                        phone,
+                        "✅ MEMÓRIA RESETADA!\n\n"
+                        "🧹 Seu histórico foi limpo.\n"
+                        "🆕 Podemos começar uma nova conversa!"
+                    )
 
-                # 3. Apagar conversas
-                supabase.table('conversas').delete().eq('phone', phone).execute()
-
-                # 4. Apagar sessão do chat
-                supabase.table('chat_sessions').delete().eq('phone', phone).execute()
-
-                # 5. Limpar da memória do session_manager
-                await session_manager.delete_session(phone)
-
-                logger.success(f"✅ Memória de {phone} resetada com sucesso!")
-
-                # 6. Enviar mensagem de confirmação
-                await whatsapp_api.send_text(phone, "MEMÓRIA RESETADA ✅\n\nBons testes 🧪")
-
-                return JSONResponse({"status": "reset_success"})
+                    return JSONResponse({"status": "reset_success"})
+                else:
+                    raise Exception("Falha ao deletar sessão")
 
             except Exception as e:
                 logger.error(f"❌ Erro ao resetar memória de {phone}: {e}")
-                await whatsapp_api.send_text(phone, "❌ Erro ao resetar memória. Tente novamente.")
+                await whatsapp_api.send_text(
+                    phone,
+                    "❌ Erro ao resetar memória. Tente novamente."
+                )
                 return JSONResponse({"status": "reset_failed", "error": str(e)})
 
         # Adiciona ao debouncer (processa após X segundos de silêncio)
@@ -317,44 +312,6 @@ async def whatsapp_webhook(request: Request):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-async def notificar_departamento_transferencia(
-    phone: str,
-    departamento: str,
-    nome_cliente: str,
-    ultima_mensagem: str
-):
-    """
-    Notifica departamento específico sobre transferência de conversa
-
-    Cria registro no Supabase para frontend exibir com badge e som
-    """
-    try:
-        from supabase import create_client
-        from config import settings
-        from datetime import datetime
-
-        supabase = create_client(settings.supabase_url, settings.supabase_service_key)
-
-        # Criar ou atualizar conversa com departamento
-        result = supabase.table("conversas").upsert({
-            "phone": phone,
-            "empresa_id": "emp1",
-            "departamento_slug": departamento,
-            "status": "aberta",
-            "modo_ia": "desligado",  # IA desliga quando transfere
-            "ultima_mensagem": ultima_mensagem,
-            "ultima_mensagem_em": datetime.utcnow().isoformat(),
-            "transferido_em": datetime.utcnow().isoformat(),
-            "nome_lead": nome_cliente,
-            "notificado": False  # Frontend vai marcar como True quando usuário ver
-        }, on_conflict="phone").execute()
-
-        logger.success(f"✅ Conversa criada/atualizada para {departamento}")
-
-    except Exception as e:
-        logger.error(f"❌ Erro ao notificar departamento: {e}")
-
-
 async def process_message(phone: str, combined_message: str, push_name: str = "Cliente"):
     """
     Processa mensagem(ns) agrupada(s) do usuário com CONTROLE INTELIGENTE DA IA
@@ -368,13 +325,16 @@ async def process_message(phone: str, combined_message: str, push_name: str = "C
 
     try:
         # Importar controlador inteligente
-        from alice.intelligent_controller import intelligent_controller
+        from paula.intelligent_controller import intelligent_controller
 
         # Recupera sessão
         state = await session_manager.get_session(phone)
 
-        # Processa com Alice
-        response, new_state = await alice_agent.process_message(
+        # Verificar se é primeira mensagem (sessão vazia ou sem histórico)
+        is_primeira_mensagem = not state or len(state.get("messages", [])) == 0
+
+        # Processa com Paula
+        response, new_state = await paula_agent.process_message(
             phone=phone,
             message=combined_message,
             state=state
@@ -387,6 +347,13 @@ async def process_message(phone: str, combined_message: str, push_name: str = "C
         conversa_id = await intelligent_controller._get_or_create_conversa(phone, new_state, push_name)
         logger.debug(f"💾 Conversa ID: {conversa_id}")
 
+        # 🏷️ Atualizar tags do lead automaticamente (passar primeira mensagem se for o caso)
+        await intelligent_controller.atualizar_tags_lead(
+            phone=phone,
+            contexto=new_state,
+            primeira_mensagem=combined_message if is_primeira_mensagem else None
+        )
+
         # ====================================================================
         # 🎯 DECISÃO INTELIGENTE: Enviar direto, aguardar aprovação ou bloquear
         # ====================================================================
@@ -394,7 +361,8 @@ async def process_message(phone: str, combined_message: str, push_name: str = "C
             phone=phone,
             mensagem_usuario=combined_message,
             resposta_ia=response,
-            contexto=new_state
+            contexto=new_state,
+            push_name=push_name
         )
 
         logger.info(f"🎯 Decisão: {decisao}")
@@ -408,7 +376,8 @@ async def process_message(phone: str, combined_message: str, push_name: str = "C
                 send_func=whatsapp_api.send_text,
                 phone=phone,
                 message=response,
-                use_smart_split=True
+                use_smart_split=True,
+                whatsapp_api=whatsapp_api  # Passa instância para usar send_with_typing
             )
             logger.success(f"✅ Mensagem enviada DIRETAMENTE (alta confiança)")
 
@@ -426,19 +395,6 @@ async def process_message(phone: str, combined_message: str, push_name: str = "C
         elif decisao == "bloquear":
             logger.warning(f"🔴 Mensagem BLOQUEADA (IA desligada)")
             # Não faz nada, IA está desligada
-
-        # ====================================================================
-        # 🔔 VERIFICAR SE HOUVE TRANSFERÊNCIA PARA DEPARTAMENTO
-        # ====================================================================
-        if new_state.get("notificar_departamento"):
-            departamento = new_state.get("notificar_departamento")
-            await notificar_departamento_transferencia(
-                phone=phone,
-                departamento=departamento,
-                nome_cliente=new_state.get("nome_cliente", "Cliente"),
-                ultima_mensagem=combined_message
-            )
-            logger.success(f"🔔 Notificação enviada para {departamento}")
 
         logger.success(f"✅ Mensagem processada ({decisao})")
 
@@ -461,7 +417,7 @@ async def health_check():
     """Health check"""
     return {
         "status": "healthy",
-        "agent": alice_agent is not None,
+        "agent": paula_agent is not None,
         "session_manager": session_manager is not None,
         "whatsapp": whatsapp_api is not None
     }
@@ -483,105 +439,18 @@ async def instance_status():
 
 
 # ============================================================================
-# ENDPOINTS DE AUTENTICAÇÃO
+# ENDPOINT DE ENVIO DE MENSAGEM MANUAL (Tela Principal)
 # ============================================================================
-
-from alice.auth import auth_service, require_auth, require_super_admin
-
-@app.post("/api/auth/login")
-async def login(request: Request):
-    """
-    Login de usuário
-
-    Body:
-    {
-        "email": "admin@lcbaterias.com",
-        "password": "admin123"
-    }
-
-    Returns:
-    {
-        "token": "jwt_token",
-        "usuario": {...}
-    }
-    """
-    try:
-        payload = await request.json()
-        email = payload.get("email")
-        password = payload.get("password")
-
-        if not email or not password:
-            raise HTTPException(status_code=400, detail="Email e senha são obrigatórios")
-
-        result = await auth_service.login(email, password)
-        return result
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"❌ Erro no login: {e}")
-        raise HTTPException(status_code=500, detail="Erro ao fazer login")
-
-
-@app.post("/api/auth/logout")
-async def logout(request: Request, usuario = Depends(require_auth)):
-    """Logout (remove sessão)"""
-    try:
-        authorization = request.headers.get("authorization", "")
-        token = authorization.replace("Bearer ", "")
-        await auth_service.logout(token)
-        return {"success": True, "message": "Logout realizado"}
-    except Exception as e:
-        logger.error(f"❌ Erro no logout: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/api/auth/me")
-async def get_me(usuario = Depends(require_auth)):
-    """Retorna dados do usuário logado"""
-    return usuario
-
-
-def formatar_mensagem_com_departamento(message: str, departamento: str) -> str:
-    """
-    Formata mensagem com prefixo do departamento em negrito
-
-    Args:
-        message: Mensagem original
-        departamento: Slug do departamento (vendas, financeiro, etc)
-
-    Returns:
-        Mensagem formatada com prefixo em negrito
-    """
-    # Mapeamento de departamentos para nomes formatados
-    nomes_departamentos = {
-        "vendas": "Vendas",
-        "financeiro": "Financeiro",
-        "assistencia-tecnica": "Assistência Técnica",
-        "suporte-ti": "Suporte TI",
-        "geral": "Humano"  # Super admin
-    }
-
-    # Pegar nome do departamento (fallback para "Humano" se não encontrado)
-    nome_dept = nomes_departamentos.get(departamento, "Humano")
-
-    # Formatar com negrito usando *texto* (formato WhatsApp)
-    mensagem_formatada = f"*{nome_dept}:*\n{message}"
-
-    return mensagem_formatada
-
 
 @app.post("/api/enviar-mensagem")
 async def enviar_mensagem(request: Request):
     """
-    Endpoint para enviar mensagem do departamento para o cliente
+    Endpoint para enviar mensagem manual da tela principal para o cliente
 
     Body:
     {
         "phone": "5561999999999",
-        "message": "Olá, sou do financeiro...",
-        "departamento": "financeiro",
-        "user_id": "user123"
+        "message": "Olá, aqui é da clínica..."
     }
     """
     try:
@@ -592,15 +461,13 @@ async def enviar_mensagem(request: Request):
         payload = await request.json()
         phone = payload.get("phone")
         message = payload.get("message")
-        departamento = payload.get("departamento")
-        user_id = payload.get("user_id")
 
         if not phone or not message:
             raise HTTPException(status_code=400, detail="Phone and message are required")
 
-        # Formatar mensagem com prefixo do departamento
-        mensagem_formatada = formatar_mensagem_com_departamento(message, departamento)
-        logger.info(f"💬 Mensagem formatada: {mensagem_formatada[:100]}")
+        # Formatar mensagem com prefixo "Humano:"
+        mensagem_formatada = f"*Humano:*\n{message}"
+        logger.info(f"💬 Mensagem manual: {mensagem_formatada[:100]}")
 
         # Enviar via WhatsApp
         await whatsapp_api.send_text(phone, mensagem_formatada)
@@ -609,7 +476,7 @@ async def enviar_mensagem(request: Request):
         supabase = create_client(settings.supabase_url, settings.supabase_service_key)
 
         # Buscar conversa
-        conversa_result = supabase.table("conversas")\
+        conversa_result = supabase.table("paula_conversas")\
             .select("id")\
             .eq("phone", phone)\
             .execute()
@@ -617,17 +484,17 @@ async def enviar_mensagem(request: Request):
         if conversa_result.data and len(conversa_result.data) > 0:
             conversa_id = conversa_result.data[0]["id"]
 
-            # Criar mensagem (salvar com prefixo formatado)
-            supabase.table("mensagens").insert({
+            # Criar mensagem
+            supabase.table("paula_mensagens").insert({
                 "conversa_id": conversa_id,
                 "remetente": "assistente",
-                "conteudo": mensagem_formatada,  # Mensagem COM prefixo do departamento
+                "conteudo": mensagem_formatada,
                 "tipo_midia": "text",
                 "lida": True,
                 "enviada_em": datetime.utcnow().isoformat()
             }).execute()
 
-        logger.success(f"✅ Mensagem enviada de {departamento} para {phone}")
+        logger.success(f"✅ Mensagem manual enviada para {phone}")
 
         return {"success": True, "message": "Mensagem enviada com sucesso"}
 
@@ -636,58 +503,43 @@ async def enviar_mensagem(request: Request):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/api/transferir-conversa")
-async def transferir_conversa(request: Request):
+@app.post("/api/pausar-ia/{phone}")
+async def pausar_ia(phone: str, request: Request):
     """
-    Transfere conversa para um departamento e pausa a IA
+    Pausa a IA para uma conversa específica
+    Usado quando humano assume atendimento manual
 
     Body:
     {
-        "phone": "5561999999999",
-        "departamento": "financeiro",
-        "motivo": "Cliente solicita falar com financeiro",
         "user_id": "user123"
     }
     """
     try:
         from supabase import create_client
-        from config import settings
         from datetime import datetime
 
         payload = await request.json()
-        phone = payload.get("phone")
-        departamento = payload.get("departamento")
-        motivo = payload.get("motivo", "")
         user_id = payload.get("user_id", "sistema")
-
-        if not phone or not departamento:
-            raise HTTPException(status_code=400, detail="Phone and departamento are required")
 
         supabase = create_client(settings.supabase_url, settings.supabase_service_key)
 
-        # Atualizar conversa: pausar IA e atribuir departamento
-        result = supabase.table("conversas").update({
-            "modo_ia": "desligado",  # PAUSAR IA
-            "departamento_slug": departamento,
-            "status": "aberta",
-            "transferido_em": datetime.utcnow().isoformat(),
-            "transferido_por": user_id,
-            "motivo_transferencia": motivo,
-            "notificado": False,
+        # Atualizar conversa: pausar IA
+        result = supabase.table("paula_conversas").update({
+            "modo_ia": "pausado",
             "updated_at": datetime.utcnow().isoformat()
         }).eq("phone", phone).execute()
 
-        logger.success(f"✅ Conversa {phone} transferida para {departamento}")
+        logger.success(f"✅ IA pausada para conversa {phone} (pausado por: {user_id})")
 
         return {
             "success": True,
-            "message": f"Conversa transferida para {departamento}",
+            "message": "IA pausada com sucesso",
             "phone": phone,
-            "departamento": departamento
+            "modo_ia": "pausado"
         }
 
     except Exception as e:
-        logger.error(f"❌ Erro ao transferir conversa: {e}")
+        logger.error(f"❌ Erro ao pausar IA: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -704,7 +556,6 @@ async def resolver_conversa(phone: str, request: Request):
     """
     try:
         from supabase import create_client
-        from config import settings
         from datetime import datetime
 
         payload = await request.json()
@@ -713,15 +564,10 @@ async def resolver_conversa(phone: str, request: Request):
 
         supabase = create_client(settings.supabase_url, settings.supabase_service_key)
 
-        # Atualizar conversa: reativar IA e marcar como resolvida
-        result = supabase.table("conversas").update({
+        # Atualizar conversa: reativar IA
+        result = supabase.table("paula_conversas").update({
             "modo_ia": "ligado",  # REATIVAR IA
-            "status": "resolvida",
-            "resolvido_em": datetime.utcnow().isoformat(),
-            "resolvido_por": user_id,
-            "nota_resolucao": nota,
-            "departamento_slug": None,  # Limpar departamento
-            "notificado": False,
+            "status": "aberta",
             "updated_at": datetime.utcnow().isoformat()
         }).eq("phone", phone).execute()
 
@@ -732,7 +578,7 @@ async def resolver_conversa(phone: str, request: Request):
 
         return {
             "success": True,
-            "message": "Conversa marcada como resolvida e IA reativada",
+            "message": "Conversa encerrada e IA reativada",
             "phone": phone
         }
 
@@ -745,13 +591,13 @@ async def resolver_conversa(phone: str, request: Request):
 # ENDPOINTS DE ANALYTICS (Super Admin Only)
 # ============================================================================
 
-from alice.analytics import analytics_tracker
-from alice.ia_control_endpoints import router as ia_control_router
+from paula.analytics import analytics_tracker
+from paula.ia_control_endpoints import router as ia_control_router
 
 # Registrar endpoint pending-leads PRIMEIRO para garantir que funciona
 @app.get("/api/analytics/pending-leads")
 async def get_pending_leads():
-    """Retorna leads pendentes (não completaram pedido)"""
+    """Retorna leads pendentes (não completaram agendamento)"""
     try:
         leads = analytics_tracker.get_leads_pendentes()
         return {
@@ -804,7 +650,7 @@ async def get_conversion_funnel():
 @app.get("/api/analytics/top-products")
 async def get_top_products(limit: int = 5):
     """
-    Retorna top produtos vendidos pela IA
+    Retorna top procedimentos agendados pela IA
 
     Acesso: Apenas Super Administrador
     """
@@ -858,23 +704,76 @@ async def remove_lead_pending(phone: str):
 
 
 @app.get("/api/conversas")
-async def buscar_conversas():
-    """Busca todas as conversas com suas mensagens"""
+async def buscar_conversas(limit: int = 50):
+    """
+    Busca conversas com suas mensagens (OTIMIZADO)
+
+    PERFORMANCE:
+    - Busca TODAS as mensagens em 1 única query
+    - Agrupa mensagens por conversa_id em memória (Python dict)
+    - Reduz N+1 queries para apenas 2 queries totais
+    """
     try:
         from supabase import create_client
+        from collections import defaultdict
 
         supabase = create_client(settings.supabase_url, settings.supabase_service_key)
 
-        conversas_result = supabase.table("conversas").select("*").order("updated_at", desc=True).execute()
+        # 🚀 QUERY 1: Buscar conversas (com limit para performance)
+        conversas_result = supabase.table("paula_conversas")\
+            .select("*")\
+            .order("updated_at", desc=True)\
+            .limit(limit)\
+            .execute()
+
+        if not conversas_result.data:
+            return {"conversas": []}
+
+        # Pegar IDs das conversas
+        conversa_ids = [c["id"] for c in conversas_result.data]
+
+        # 🚀 QUERY 2: Buscar TODAS as mensagens dessas conversas de uma vez
+        mensagens_result = supabase.table("paula_mensagens")\
+            .select("*")\
+            .in_("conversa_id", conversa_ids)\
+            .order("enviada_em", desc=False)\
+            .execute()
+
+        # 📦 Agrupar mensagens por conversa_id (em memória - super rápido)
+        mensagens_por_conversa = defaultdict(list)
+        for msg in mensagens_result.data:
+            mensagens_por_conversa[msg["conversa_id"]].append(msg)
+
+        # 🏗️ Montar resposta
         conversas_com_mensagens = []
-
         for conversa in conversas_result.data:
-            mensagens_result = supabase.table("mensagens").select("*").eq("conversa_id", conversa["id"]).order("enviada_em", desc=False).execute()
-            conversas_com_mensagens.append({**conversa, "mensagens": mensagens_result.data})
+            conversa_id = conversa["id"]
+            mensagens = mensagens_por_conversa.get(conversa_id, [])
 
+            # Última mensagem (para preview)
+            ultima_mensagem = None
+            if mensagens:
+                ultima_msg_data = mensagens[-1]  # Última da lista ordenada
+                ultima_mensagem = {
+                    "id": ultima_msg_data["id"],
+                    "conversa_id": ultima_msg_data["conversa_id"],
+                    "conteudo": ultima_msg_data["conteudo"],
+                    "tipo": "entrada" if ultima_msg_data["remetente"] == "usuario" else "saida",
+                    "created_at": ultima_msg_data["enviada_em"]
+                }
+
+            conversas_com_mensagens.append({
+                **conversa,
+                "mensagens": mensagens,
+                "ultima_mensagem": ultima_mensagem,
+                "tags": conversa.get("tags") or []  # Tags já vêm da conversa
+            })
+
+        logger.info(f"✅ {len(conversas_com_mensagens)} conversas carregadas (limit={limit})")
         return {"conversas": conversas_com_mensagens}
+
     except Exception as e:
-        logger.error(f"Erro ao buscar conversas: {e}")
+        logger.error(f"❌ Erro ao buscar conversas: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -886,11 +785,245 @@ async def buscar_mensagens():
 
         supabase = create_client(settings.supabase_url, settings.supabase_service_key)
 
-        result = supabase.table("mensagens").select("*").order("enviada_em", desc=True).execute()
+        result = supabase.table("paula_mensagens").select("*").order("enviada_em", desc=True).execute()
 
         return {"mensagens": result.data}
     except Exception as e:
         logger.error(f"Erro ao buscar mensagens: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.put("/api/conversas/{phone}/qualificacao")
+async def atualizar_qualificacao(phone: str, request: Request):
+    """
+    Atualiza a qualificação do lead (frio/quente) - OTIMIZADO
+
+    Body:
+    {
+        "qualificacao": "frio" | "quente" | null
+    }
+
+    PERFORMANCE:
+    - NÃO atualiza updated_at para evitar trigger de real-time desnecessário
+    - Apenas atualiza o campo qualificacao
+    """
+    try:
+        from supabase import create_client
+
+        payload = await request.json()
+        qualificacao = payload.get("qualificacao")
+
+        # Validar qualificação
+        if qualificacao not in ["frio", "quente", None]:
+            raise HTTPException(status_code=400, detail="Qualificação deve ser 'frio', 'quente' ou null")
+
+        supabase = create_client(settings.supabase_url, settings.supabase_service_key)
+
+        # ⚡ Atualizar SOMENTE qualificação (não updated_at)
+        result = supabase.table("paula_conversas").update({
+            "qualificacao": qualificacao
+        }).eq("phone", phone).execute()
+
+        if not result.data:
+            raise HTTPException(status_code=404, detail="Conversa não encontrada")
+
+        logger.info(f"✅ Qualificação atualizada: {phone} → {qualificacao}")
+
+        return {
+            "success": True,
+            "message": "Qualificação atualizada",
+            "phone": phone,
+            "qualificacao": qualificacao
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Erro ao atualizar qualificação: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.put("/api/conversas/{phone}/pipeline")
+async def atualizar_estagio_pipeline(phone: str, request: Request):
+    """
+    Atualiza o estágio do pipeline do lead
+
+    Estágios disponíveis:
+    - novo: Lead novo que acabou de chegar
+    - em_contato: Primeira interação acontecendo
+    - aguardando_resposta: Lead não respondeu ainda
+    - interessado: Demonstrou interesse
+    - agendamento_solicitado: Pediu para agendar
+    - agendado: Consulta já marcada
+    - compareceu: Passou na consulta
+    - nao_compareceu: Faltou à consulta
+    - convertido: Fechou tratamento
+    - perdido: Desistiu/não tem interesse
+
+    Body:
+    {
+        "estagio": "agendado"
+    }
+    """
+    try:
+        from supabase import create_client
+
+        payload = await request.json()
+        estagio = payload.get("estagio")
+
+        # Validar estágio
+        estagios_validos = [
+            "novo", "em_contato", "aguardando_resposta", "interessado",
+            "agendamento_solicitado", "agendado", "compareceu",
+            "nao_compareceu", "convertido", "perdido"
+        ]
+
+        if estagio not in estagios_validos:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Estágio inválido. Use um dos seguintes: {', '.join(estagios_validos)}"
+            )
+
+        supabase = create_client(settings.supabase_url, settings.supabase_service_key)
+
+        # ⚡ Atualizar estágio do pipeline
+        result = supabase.table("paula_conversas").update({
+            "estagio_pipeline": estagio
+        }).eq("phone", phone).execute()
+
+        if not result.data:
+            raise HTTPException(status_code=404, detail="Conversa não encontrada")
+
+        logger.info(f"✅ Estágio do pipeline atualizado: {phone} → {estagio}")
+
+        return {
+            "success": True,
+            "message": "Estágio atualizado",
+            "phone": phone,
+            "estagio": estagio
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Erro ao atualizar estágio do pipeline: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/leads")
+async def listar_leads(
+    periodo: str = "hoje",  # hoje, 7dias, mes, tudo
+    qualificacao: str = None,  # frio, quente, null
+    pipeline: str = None,  # filtro por estágio do pipeline
+    tag: str = None,  # filtro por tag
+    data_inicio: str = None,  # formato: YYYY-MM-DD
+    data_fim: str = None  # formato: YYYY-MM-DD
+):
+    """
+    Lista todos os leads que falaram com a IA no WhatsApp com filtros
+
+    Filtros:
+    - periodo: hoje, 7dias, mes, tudo
+    - qualificacao: frio, quente, sem_qualificacao
+    - pipeline: filtro por estágio (novo, em_contato, agendado, etc)
+    - tag: busca parcial por tag
+    - data_inicio e data_fim: intervalo customizado
+    """
+    try:
+        from supabase import create_client
+        from datetime import datetime, timedelta
+
+        supabase = create_client(settings.supabase_url, settings.supabase_service_key)
+
+        # Buscar todas as conversas
+        query = supabase.table("paula_conversas")\
+            .select("*")\
+            .order("created_at", desc=True)
+
+        result = query.execute()
+        leads = []
+
+        # Aplicar filtros
+        hoje = datetime.utcnow().date()
+
+        for conversa in result.data:
+            # Filtro de período
+            data_conversa = datetime.fromisoformat(conversa['created_at'].replace('Z', '+00:00')).date()
+
+            if periodo == "hoje":
+                if data_conversa != hoje:
+                    continue
+            elif periodo == "7dias":
+                if data_conversa < hoje - timedelta(days=7):
+                    continue
+            elif periodo == "mes":
+                if data_conversa.month != hoje.month or data_conversa.year != hoje.year:
+                    continue
+
+            # Filtro de intervalo customizado
+            if data_inicio:
+                inicio = datetime.fromisoformat(data_inicio).date()
+                if data_conversa < inicio:
+                    continue
+
+            if data_fim:
+                fim = datetime.fromisoformat(data_fim).date()
+                if data_conversa > fim:
+                    continue
+
+            # Filtro de qualificação
+            if qualificacao:
+                if qualificacao == "sem_qualificacao":
+                    if conversa.get('qualificacao'):
+                        continue
+                elif conversa.get('qualificacao') != qualificacao:
+                    continue
+
+            # Filtro de pipeline
+            if pipeline:
+                if conversa.get('estagio_pipeline') != pipeline:
+                    continue
+
+            # Filtro de tag (busca parcial)
+            if tag:
+                tags_conversa = conversa.get('tags') or []
+                tag_encontrada = any(tag.lower() in t.lower() for t in tags_conversa)
+                if not tag_encontrada:
+                    continue
+
+            # Montar objeto do lead
+            leads.append({
+                "id": conversa['id'],
+                "nome": conversa.get('nome_lead') or 'Sem nome',
+                "telefone": conversa['phone'],
+                "tags": conversa.get('tags') or [],
+                "qualificacao": conversa.get('qualificacao'),
+                "estagio_pipeline": conversa.get('estagio_pipeline') or 'novo',
+                "status": conversa.get('status'),
+                "prioridade": conversa.get('prioridade'),
+                "primeira_mensagem": conversa['created_at'],
+                "ultima_interacao": conversa.get('updated_at') or conversa['created_at'],
+                "total_mensagens": 0  # Pode ser calculado depois se necessário
+            })
+
+        logger.info(f"📊 Listando {len(leads)} leads | Filtros: periodo={periodo}, qualificacao={qualificacao}, pipeline={pipeline}, tag={tag}")
+
+        return {
+            "success": True,
+            "total": len(leads),
+            "leads": leads,
+            "filtros_aplicados": {
+                "periodo": periodo,
+                "qualificacao": qualificacao,
+                "pipeline": pipeline,
+                "tag": tag,
+                "data_inicio": data_inicio,
+                "data_fim": data_fim
+            }
+        }
+
+    except Exception as e:
+        logger.error(f"❌ Erro ao listar leads: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
