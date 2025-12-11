@@ -849,13 +849,10 @@ async def enviar_pedido(pedido_json: str) -> Dict[str, Any]:
         # ===================================================================
 
         # Só adiciona prazo_sucata se base_troca = 1
+        # SEMPRE usa "no ato" (não pergunta mais ao cliente)
         if dataset['base_troca'] == 1:
-            prazo_sucata = pedido_json.get('prazo_sucata')
-            if prazo_sucata:
-                dataset['prazo_sucata'] = str(prazo_sucata)
-                logger.debug(f"✓ Prazo sucata incluído: {prazo_sucata}")
-            else:
-                logger.warning("⚠️ base_troca=1 mas prazo_sucata não fornecido")
+            dataset['prazo_sucata'] = "no ato"
+            logger.debug("✓ Prazo sucata fixado como 'no ato' (padrão automático)")
         else:
             logger.debug("✓ Sem troca de sucata, prazo_sucata não incluído")
 
