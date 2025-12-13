@@ -500,9 +500,16 @@ async def consultar_baterias(query: str) -> Dict[str, Any]:
                 quantidade = produto_pedido["quantidade"]
 
                 # Buscar produto no dataset
+                # Normalizar código removendo TODOS os espaços para comparação
+                # Ex: "CL-50 NS D" vira "CL-50NSD" igual ao "CL-50NSD" da API
+                codigo_normalizado = codigo_busca.replace(" ", "")
+
                 produto_encontrado = None
                 for prod in dataset:
-                    if prod.get("nome_curto") == codigo_busca:
+                    nome_curto_api = prod.get("nome_curto", "")
+                    nome_normalizado = nome_curto_api.replace(" ", "")
+
+                    if nome_normalizado == codigo_normalizado:
                         produto_encontrado = prod
                         break
 
