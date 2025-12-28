@@ -149,6 +149,64 @@ class SessionManager:
             del self.sessions[phone]
             logger.info(f"🗑️ Sessão deletada (memória): {phone}")
 
+        return True
+
+    async def delete_all_data(self, phone: str) -> bool:
+        """
+        Deleta TODOS os dados relacionados a um telefone:
+        - Sessões (chat_sessions)
+        - Conversas (conversas)
+        - Mensagens (mensagens)
+        - Histórico de decisões (historico_decisoes)
+        - Memória local
+        
+        Args:
+            phone: Telefone do usuário
+            
+        Returns:
+            True se sucesso, False se erro
+        """
+        if not self.use_supabase or not self.supabase:
+            logger.warning("Supabase não configurado, deletando apenas memória local")
+            if phone in self.sessions:
+                del self.sessions[phone]
+            return True
+            
+        try:
+            # 1. Buscar ID da conversa
+            conversa_result = self.supabase.table("conversas")                .select("id")                .eq("phone", phone)                .execute()
+            
+            if conversa_result.data and len(conversa_result.data) > 0:
+                conversa_id = conversa_result.data[0]["id"]
+                
+                # 2. Deletar mensagens da conversa
+                self.supabase.table("mensagens")                    .delete()                    .eq("conversa_id", conversa_id)                    .execute()
+                logger.info(f"🗑️ Mensagens deletadas para conversa {conversa_id}")
+                
+                # 3. Deletar conversa
+                self.supabase.table("conversas")                    .delete()                    .eq("id", conversa_id)                    .execute()
+                logger.info(f"🗑️ Conversa {conversa_id} deletada")
+            
+            # 4. Deletar sessão
+            self.supabase.table("chat_sessions")                .delete()                .eq("phone", phone)                .execute()
+            logger.info(f"🗑️ Sessão deletada para {phone}")
+            
+            # 5. Deletar histórico de decisões
+            self.supabase.table("historico_decisoes")                .delete()                .eq("phone", phone)                .execute()
+            logger.info(f"🗑️ Histórico de decisões deletado para {phone}")
+            
+            # 6. Remover da memória local
+            if phone in self.sessions:
+                del self.sessions[phone]
+                logger.info(f"🗑️ Sessão removida da memória: {phone}")
+            
+            logger.success(f"✅ TODOS os dados de {phone} foram deletados!")
+            return True
+            
+        except Exception as e:
+            logger.error(f"❌ Erro ao deletar todos os dados de {phone}: {e}")
+            return False
+
     def _serialize_state(self, state: ConversationState) -> dict:
         """
         Serializa ConversationState para JSON (JSONB do Postgres)

@@ -1,4 +1,4 @@
-"""Aplicação principal da Paula - Clínica Caru Moreno"""
+"""Aplicação principal da Alice - Clínica Caru Moreno"""
 import asyncio
 from typing import Optional
 from fastapi import FastAPI, Request, HTTPException, Depends
@@ -8,10 +8,10 @@ from loguru import logger
 import sys
 
 from config import settings
-from paula.agent import PaulaAgent
+from alice.agent import AliceAgent
 from alice.session_manager import SessionManager
-from paula.ia_control_endpoints import router as ia_control_router
-from paula.learning_endpoints import router as learning_router
+from alice.ia_control_endpoints import router as ia_control_router
+from alice.learning_endpoints import router as learning_router
 from whatsapp.evolution_api import EvolutionAPI
 from utils.debouncer import MessageDebouncer
 from utils.message_splitter import send_with_typing_simulation
@@ -30,14 +30,14 @@ logger.add(
 )
 
 if settings.debug:
-    logger.add("logs/paula_{time}.log", rotation="1 day", retention="7 days")
+    logger.add("logs/alice_{time}.log", rotation="1 day", retention="7 days")
 
 
 # ============================================================================
 # INICIALIZAÇÃO
 # ============================================================================
 
-app = FastAPI(title="Paula - Clínica Caru Moreno", version="1.0.0")
+app = FastAPI(title="Alice - Clínica Caru Moreno", version="1.0.0")
 
 # Incluir routers de controle da IA e aprendizado
 app.include_router(ia_control_router)
@@ -53,7 +53,7 @@ app.add_middleware(
 )
 
 # Componentes globais
-paula_agent: Optional[PaulaAgent] = None
+alice_agent: Optional[AliceAgent] = None
 session_manager: Optional[SessionManager] = None
 whatsapp_api: Optional[EvolutionAPI] = None
 debouncer: Optional[MessageDebouncer] = None
@@ -76,7 +76,7 @@ async def salvar_mensagem(conversa_id: str, remetente: str, conteudo: str, tipo_
 
         supabase = create_client(settings.supabase_url, settings.supabase_service_key)
 
-        supabase.table("paula_mensagens").insert({
+        supabase.table("mensagens").insert({
             "conversa_id": conversa_id,
             "remetente": remetente,
             "conteudo": conteudo,
@@ -92,12 +92,12 @@ async def salvar_mensagem(conversa_id: str, remetente: str, conteudo: str, tipo_
 @app.on_event("startup")
 async def startup():
     """Inicializa componentes"""
-    global paula_agent, session_manager, whatsapp_api, debouncer, media_processor
+    global alice_agent, session_manager, whatsapp_api, debouncer, media_processor
 
-    logger.info("🚀 Iniciando Paula...")
+    logger.info("🚀 Iniciando Alice...")
 
     # Agente
-    paula_agent = PaulaAgent()
+    alice_agent = AliceAgent()
 
     # Gerenciador de sessões
     session_manager = SessionManager(use_supabase=True)
@@ -111,18 +111,18 @@ async def startup():
     # Processador de mídia
     media_processor = MediaProcessor()
 
-    logger.success("✅ Paula iniciada com sucesso!")
+    logger.success("✅ Alice iniciada com sucesso!")
 
 
 @app.on_event("shutdown")
 async def shutdown():
     """Encerra componentes"""
-    logger.info("🛑 Encerrando Paula...")
+    logger.info("🛑 Encerrando Alice...")
 
     if session_manager:
         await session_manager.close()
 
-    logger.info("👋 Paula encerrada")
+    logger.info("👋 Alice encerrada")
 
 
 # ============================================================================
@@ -161,13 +161,20 @@ async def whatsapp_webhook(request: Request):
         key = data.get("key", {})
         message_data = data.get("message", {})
 
-        # Ignora mensagens enviadas pela própria Paula
+        # Ignora mensagens enviadas pela própria Alice
         if key.get("fromMe"):
             return JSONResponse({"status": "ignored", "reason": "message from me"})
 
         # Extrai telefone e nome do contato
         remote_jid = key.get("remoteJid", "")
-        phone = remote_jid.split("@")[0]  # Remove @s.whatsapp.net
+        
+        # Fix: Se remoteJid termina com @lid (iPhone), usa remoteJidAlt
+        if remote_jid.endswith("@lid"):
+            remote_jid_alt = key.get("remoteJidAlt", "")
+            if remote_jid_alt:  # Se tiver remoteJidAlt, usa ele
+                remote_jid = remote_jid_alt
+        
+        phone = remote_jid.split("@")[0]  # Remove @s.whatsapp.net ou @lid
         push_name = data.get("pushName", "Cliente")  # Nome do WhatsApp
 
         # ========================================================================
@@ -273,7 +280,7 @@ async def whatsapp_webhook(request: Request):
 
             try:
                 # Usa o novo método unificado do SessionManager
-                sucesso = await session_manager.delete_session_complete(phone)
+                sucesso = await session_manager.delete_all_data(phone)
 
                 if sucesso:
                     logger.success(f"✅ Memória de {phone} resetada com sucesso!")
@@ -325,7 +332,7 @@ async def process_message(phone: str, combined_message: str, push_name: str = "C
 
     try:
         # Importar controlador inteligente
-        from paula.intelligent_controller import intelligent_controller
+        from alice.intelligent_controller import intelligent_controller
 
         # Recupera sessão
         state = await session_manager.get_session(phone)
@@ -333,8 +340,8 @@ async def process_message(phone: str, combined_message: str, push_name: str = "C
         # Verificar se é primeira mensagem (sessão vazia ou sem histórico)
         is_primeira_mensagem = not state or len(state.get("messages", [])) == 0
 
-        # Processa com Paula
-        response, new_state = await paula_agent.process_message(
+        # Processa com Alice
+        response, new_state = await alice_agent.process_message(
             phone=phone,
             message=combined_message,
             state=state
@@ -347,12 +354,6 @@ async def process_message(phone: str, combined_message: str, push_name: str = "C
         conversa_id = await intelligent_controller._get_or_create_conversa(phone, new_state, push_name)
         logger.debug(f"💾 Conversa ID: {conversa_id}")
 
-        # 🏷️ Atualizar tags do lead automaticamente (passar primeira mensagem se for o caso)
-        await intelligent_controller.atualizar_tags_lead(
-            phone=phone,
-            contexto=new_state,
-            primeira_mensagem=combined_message if is_primeira_mensagem else None
-        )
 
         # ====================================================================
         # 🎯 DECISÃO INTELIGENTE: Enviar direto, aguardar aprovação ou bloquear
@@ -361,8 +362,7 @@ async def process_message(phone: str, combined_message: str, push_name: str = "C
             phone=phone,
             mensagem_usuario=combined_message,
             resposta_ia=response,
-            contexto=new_state,
-            push_name=push_name
+            contexto=new_state
         )
 
         logger.info(f"🎯 Decisão: {decisao}")
@@ -376,8 +376,7 @@ async def process_message(phone: str, combined_message: str, push_name: str = "C
                 send_func=whatsapp_api.send_text,
                 phone=phone,
                 message=response,
-                use_smart_split=True,
-                whatsapp_api=whatsapp_api  # Passa instância para usar send_with_typing
+                use_smart_split=True
             )
             logger.success(f"✅ Mensagem enviada DIRETAMENTE (alta confiança)")
 
@@ -417,7 +416,7 @@ async def health_check():
     """Health check"""
     return {
         "status": "healthy",
-        "agent": paula_agent is not None,
+        "agent": alice_agent is not None,
         "session_manager": session_manager is not None,
         "whatsapp": whatsapp_api is not None
     }
@@ -476,7 +475,7 @@ async def enviar_mensagem(request: Request):
         supabase = create_client(settings.supabase_url, settings.supabase_service_key)
 
         # Buscar conversa
-        conversa_result = supabase.table("paula_conversas")\
+        conversa_result = supabase.table("conversas")\
             .select("id")\
             .eq("phone", phone)\
             .execute()
@@ -485,7 +484,7 @@ async def enviar_mensagem(request: Request):
             conversa_id = conversa_result.data[0]["id"]
 
             # Criar mensagem
-            supabase.table("paula_mensagens").insert({
+            supabase.table("mensagens").insert({
                 "conversa_id": conversa_id,
                 "remetente": "assistente",
                 "conteudo": mensagem_formatada,
@@ -524,7 +523,7 @@ async def pausar_ia(phone: str, request: Request):
         supabase = create_client(settings.supabase_url, settings.supabase_service_key)
 
         # Atualizar conversa: pausar IA
-        result = supabase.table("paula_conversas").update({
+        result = supabase.table("conversas").update({
             "modo_ia": "pausado",
             "updated_at": datetime.utcnow().isoformat()
         }).eq("phone", phone).execute()
@@ -565,7 +564,7 @@ async def resolver_conversa(phone: str, request: Request):
         supabase = create_client(settings.supabase_url, settings.supabase_service_key)
 
         # Atualizar conversa: reativar IA
-        result = supabase.table("paula_conversas").update({
+        result = supabase.table("conversas").update({
             "modo_ia": "ligado",  # REATIVAR IA
             "status": "aberta",
             "updated_at": datetime.utcnow().isoformat()
@@ -591,8 +590,8 @@ async def resolver_conversa(phone: str, request: Request):
 # ENDPOINTS DE ANALYTICS (Super Admin Only)
 # ============================================================================
 
-from paula.analytics import analytics_tracker
-from paula.ia_control_endpoints import router as ia_control_router
+from alice.analytics import analytics_tracker
+from alice.ia_control_endpoints import router as ia_control_router
 
 # Registrar endpoint pending-leads PRIMEIRO para garantir que funciona
 @app.get("/api/analytics/pending-leads")
@@ -720,7 +719,7 @@ async def buscar_conversas(limit: int = 50):
         supabase = create_client(settings.supabase_url, settings.supabase_service_key)
 
         # 🚀 QUERY 1: Buscar conversas (com limit para performance)
-        conversas_result = supabase.table("paula_conversas")\
+        conversas_result = supabase.table("conversas")\
             .select("*")\
             .order("updated_at", desc=True)\
             .limit(limit)\
@@ -733,7 +732,7 @@ async def buscar_conversas(limit: int = 50):
         conversa_ids = [c["id"] for c in conversas_result.data]
 
         # 🚀 QUERY 2: Buscar TODAS as mensagens dessas conversas de uma vez
-        mensagens_result = supabase.table("paula_mensagens")\
+        mensagens_result = supabase.table("mensagens")\
             .select("*")\
             .in_("conversa_id", conversa_ids)\
             .order("enviada_em", desc=False)\
@@ -785,7 +784,7 @@ async def buscar_mensagens():
 
         supabase = create_client(settings.supabase_url, settings.supabase_service_key)
 
-        result = supabase.table("paula_mensagens").select("*").order("enviada_em", desc=True).execute()
+        result = supabase.table("mensagens").select("*").order("enviada_em", desc=True).execute()
 
         return {"mensagens": result.data}
     except Exception as e:
@@ -820,7 +819,7 @@ async def atualizar_qualificacao(phone: str, request: Request):
         supabase = create_client(settings.supabase_url, settings.supabase_service_key)
 
         # ⚡ Atualizar SOMENTE qualificação (não updated_at)
-        result = supabase.table("paula_conversas").update({
+        result = supabase.table("conversas").update({
             "qualificacao": qualificacao
         }).eq("phone", phone).execute()
 
@@ -887,7 +886,7 @@ async def atualizar_estagio_pipeline(phone: str, request: Request):
         supabase = create_client(settings.supabase_url, settings.supabase_service_key)
 
         # ⚡ Atualizar estágio do pipeline
-        result = supabase.table("paula_conversas").update({
+        result = supabase.table("conversas").update({
             "estagio_pipeline": estagio
         }).eq("phone", phone).execute()
 
@@ -936,7 +935,7 @@ async def listar_leads(
         supabase = create_client(settings.supabase_url, settings.supabase_service_key)
 
         # Buscar todas as conversas
-        query = supabase.table("paula_conversas")\
+        query = supabase.table("conversas")\
             .select("*")\
             .order("created_at", desc=True)
 
