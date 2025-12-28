@@ -287,12 +287,9 @@ export function MessageArea({ conversa, mensagens, onEnviarMensagem, onMensagens
       <div className="bg-white border-b p-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <Avatar className="h-10 w-10">
-              {conversa.lead.avatar_url && <AvatarImage src={conversa.lead.avatar_url} />}
-              <AvatarFallback className="bg-gradient-to-br from-orange-500 to-red-600 text-white">
-                {conversa.lead.nome.charAt(0).toUpperCase()}
-              </AvatarFallback>
-            </Avatar>
+            <div className="h-10 w-10 shrink-0 rounded-full bg-gradient-to-br from-orange-500 to-red-600 text-white flex items-center justify-center font-semibold">
+              {conversa.lead.nome.charAt(0).toUpperCase()}
+            </div>
 
             <div>
               <h2 className="font-bold text-lg">{conversa.lead.nome}</h2>
@@ -367,12 +364,9 @@ export function MessageArea({ conversa, mensagens, onEnviarMensagem, onMensagens
               )}
             >
               {mensagem.tipo === 'entrada' && (
-                <Avatar className="h-8 w-8">
-                  {conversa.lead.avatar_url && <AvatarImage src={conversa.lead.avatar_url} />}
-                  <AvatarFallback className="bg-gradient-to-br from-orange-500 to-red-600 text-white text-xs">
-                    {conversa.lead.nome.charAt(0).toUpperCase()}
-                  </AvatarFallback>
-                </Avatar>
+                <div className="h-8 w-8 shrink-0 rounded-full bg-gradient-to-br from-orange-500 to-red-600 text-white flex items-center justify-center font-semibold text-xs">
+                  {conversa.lead.nome.charAt(0).toUpperCase()}
+                </div>
               )}
 
               <div

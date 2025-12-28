@@ -134,12 +134,9 @@ export function ContactInfo({ conversa, onClose }: ContactInfoProps) {
         <div className="p-4 space-y-6">
           {/* Avatar and Name */}
           <div className="flex flex-col items-center text-center">
-            <Avatar className="h-20 w-20 mb-3">
-              {conversa.lead.avatar_url && <AvatarImage src={conversa.lead.avatar_url} />}
-              <AvatarFallback className="bg-gradient-to-br from-orange-500 to-red-600 text-white text-2xl">
-                {conversa.lead.nome.charAt(0).toUpperCase()}
-              </AvatarFallback>
-            </Avatar>
+            <div className="h-20 w-20 mb-3 shrink-0 rounded-full bg-gradient-to-br from-orange-500 to-red-600 text-white flex items-center justify-center font-semibold text-2xl">
+              {conversa.lead.nome.charAt(0).toUpperCase()}
+            </div>
             <h3 className="font-bold text-lg">{conversa.lead.nome}</h3>
             <p className="text-sm text-gray-500">Lead</p>
           </div>
