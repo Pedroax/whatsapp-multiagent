@@ -136,7 +136,7 @@ export function ContactInfo({ conversa, onClose }: ContactInfoProps) {
           <div className="flex flex-col items-center text-center">
             <Avatar className="h-20 w-20 mb-3">
               <AvatarImage src={conversa.lead.avatar_url} />
-              <AvatarFallback className="bg-blue-500 text-white text-2xl">
+              <AvatarFallback className="bg-gradient-to-br from-orange-500 to-red-600 text-white text-2xl">
                 {conversa.lead.nome.charAt(0).toUpperCase()}
               </AvatarFallback>
             </Avatar>

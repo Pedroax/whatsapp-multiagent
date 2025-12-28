@@ -289,7 +289,7 @@ export function MessageArea({ conversa, mensagens, onEnviarMensagem, onMensagens
           <div className="flex items-center gap-3">
             <Avatar className="h-10 w-10">
               <AvatarImage src={conversa.lead.avatar_url} />
-              <AvatarFallback className="bg-blue-500 text-white">
+              <AvatarFallback className="bg-gradient-to-br from-orange-500 to-red-600 text-white">
                 {conversa.lead.nome.charAt(0).toUpperCase()}
               </AvatarFallback>
             </Avatar>
@@ -369,7 +369,7 @@ export function MessageArea({ conversa, mensagens, onEnviarMensagem, onMensagens
               {mensagem.tipo === 'entrada' && (
                 <Avatar className="h-8 w-8">
                   <AvatarImage src={conversa.lead.avatar_url} />
-                  <AvatarFallback className="bg-gray-400 text-white text-xs">
+                  <AvatarFallback className="bg-gradient-to-br from-orange-500 to-red-600 text-white text-xs">
                     {conversa.lead.nome.charAt(0).toUpperCase()}
                   </AvatarFallback>
                 </Avatar>
