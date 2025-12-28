@@ -354,6 +354,43 @@ async def process_message(phone: str, combined_message: str, push_name: str = "C
         conversa_id = await intelligent_controller._get_or_create_conversa(phone, new_state, push_name)
         logger.debug(f"💾 Conversa ID: {conversa_id}")
 
+        # ====================================================================
+        # 🔄 TRANSFERÊNCIA DE DEPARTAMENTO
+        # ====================================================================
+        if new_state.get("notificar_departamento"):
+            try:
+                from supabase import create_client
+                from config import settings
+
+                departamento_slug = new_state.get("notificar_departamento")
+                motivo = new_state.get("motivo_transferencia", "")
+
+                logger.warning(f"🔔 Transferindo conversa {conversa_id} para {departamento_slug}: {motivo}")
+
+                supabase = create_client(settings.supabase_url, settings.supabase_service_key)
+
+                # Buscar ID do departamento pelo slug
+                dept_result = supabase.table("departamentos")\
+                    .select("id")\
+                    .eq("slug", departamento_slug)\
+                    .execute()
+
+                if dept_result.data and len(dept_result.data) > 0:
+                    departamento_id = dept_result.data[0]["id"]
+
+                    # Atualizar departamento da conversa
+                    supabase.table("conversas")\
+                        .update({"departamento_id": departamento_id})\
+                        .eq("id", conversa_id)\
+                        .execute()
+
+                    logger.success(f"✅ Conversa transferida para {departamento_slug} (ID: {departamento_id})")
+                else:
+                    logger.error(f"❌ Departamento '{departamento_slug}' não encontrado no banco")
+
+            except Exception as e:
+                logger.error(f"❌ Erro ao transferir departamento: {e}")
+
 
         # ====================================================================
         # 🎯 DECISÃO INTELIGENTE: Enviar direto, aguardar aprovação ou bloquear
