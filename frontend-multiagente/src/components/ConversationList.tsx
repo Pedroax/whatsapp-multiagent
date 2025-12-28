@@ -276,7 +276,7 @@ export function ConversationList({ conversas, conversaSelecionada, onSelectConve
           >
             <div className="flex items-start gap-3">
               <Avatar className="h-10 w-10">
-                <AvatarImage src={conversa.lead.avatar_url} />
+                {conversa.lead.avatar_url && <AvatarImage src={conversa.lead.avatar_url} />}
                 <AvatarFallback className="bg-gradient-to-br from-orange-500 to-red-600 text-white">
                   {conversa.lead.nome.charAt(0).toUpperCase()}
                 </AvatarFallback>
