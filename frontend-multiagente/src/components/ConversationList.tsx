@@ -275,7 +275,7 @@ export function ConversationList({ conversas, conversaSelecionada, onSelectConve
             )}
           >
             <div className="flex items-start gap-3">
-              <div className="h-10 w-10 shrink-0 rounded-full bg-gradient-to-br from-orange-500 to-red-600 text-white flex items-center justify-center font-semibold">
+              <div className="h-10 w-10 shrink-0 rounded-full bg-blue-500 text-white flex items-center justify-center font-semibold">
                 {conversa.lead.nome.charAt(0).toUpperCase()}
               </div>
 

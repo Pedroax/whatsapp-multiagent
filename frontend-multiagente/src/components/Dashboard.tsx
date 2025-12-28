@@ -10,7 +10,8 @@ import {
   X,
   Bell,
   Search,
-  Volume2
+  Volume2,
+  Send
 } from 'lucide-react'
 import { useNotifications } from '@/hooks/useNotifications'
 import { useAuth } from '@/hooks/useAuth'
@@ -23,6 +24,7 @@ import { ApprovalQueue } from './ApprovalQueue'
 import { ScheduleManager } from './ScheduleManager'
 import { Simulator } from './Simulator'
 import { LearningStats } from './LearningStats'
+import { DisparadorCampanha } from './DisparadorCampanha'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -168,6 +170,7 @@ export function Dashboard({
     },
     ...(userRole === 'super_admin' ? [
       { id: 'analytics', icon: BarChart3, label: 'Analytics' },
+      { id: 'disparador', icon: Send, label: 'Disparador' },
       { id: 'agentes', icon: Users, label: 'Agentes' },
       { id: 'ia', icon: Bot, label: 'Config IA' },
       { id: 'settings', icon: Settings, label: 'Configurações' },
@@ -275,6 +278,7 @@ export function Dashboard({
             <h2 className="text-xl font-bold text-gray-900">
               {activeTab === 'conversas' && 'Conversas'}
               {activeTab === 'analytics' && 'Analytics'}
+              {activeTab === 'disparador' && 'Disparador de Campanhas'}
               {activeTab === 'agentes' && 'Agentes'}
               {activeTab === 'ia' && 'Configurações de IA'}
               {activeTab === 'settings' && 'Configurações'}
@@ -348,6 +352,24 @@ export function Dashboard({
                   <BarChart3 className="h-16 w-16 text-gray-400 mx-auto mb-4" />
                   <p className="text-lg font-semibold text-gray-700 mb-2">Acesso Restrito</p>
                   <p className="text-gray-500">Apenas Super Administradores podem acessar Analytics</p>
+                </div>
+              </div>
+            )
+          )}
+
+          {activeTab === 'disparador' && (
+            userRole === 'super_admin' ? (
+              <div className="flex-1 overflow-y-auto p-6">
+                <div className="max-w-6xl mx-auto">
+                  <DisparadorCampanha />
+                </div>
+              </div>
+            ) : (
+              <div className="flex-1 flex items-center justify-center">
+                <div className="text-center">
+                  <Send className="h-16 w-16 text-gray-400 mx-auto mb-4" />
+                  <p className="text-lg font-semibold text-gray-700 mb-2">Acesso Restrito</p>
+                  <p className="text-gray-500">Apenas Super Administradores podem acessar o Disparador</p>
                 </div>
               </div>
             )

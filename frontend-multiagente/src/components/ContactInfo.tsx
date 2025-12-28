@@ -134,7 +134,7 @@ export function ContactInfo({ conversa, onClose }: ContactInfoProps) {
         <div className="p-4 space-y-6">
           {/* Avatar and Name */}
           <div className="flex flex-col items-center text-center">
-            <div className="h-20 w-20 mb-3 shrink-0 rounded-full bg-gradient-to-br from-orange-500 to-red-600 text-white flex items-center justify-center font-semibold text-2xl">
+            <div className="h-20 w-20 mb-3 shrink-0 rounded-full bg-blue-500 text-white flex items-center justify-center font-semibold text-2xl">
               {conversa.lead.nome.charAt(0).toUpperCase()}
             </div>
             <h3 className="font-bold text-lg">{conversa.lead.nome}</h3>
